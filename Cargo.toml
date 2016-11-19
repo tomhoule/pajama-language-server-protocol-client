@@ -1,0 +1,15 @@
+[package]
+name = "tokio-language-server-rpc"
+version = "0.1.0"
+authors = ["Tom Houlé <tom@tomhoule.com>"]
+
+[dependencies]
+chomp = "*"
+futures = { git = "https://github.com/alexcrichton/futures-rs" }
+mio = "*"
+serde = "*"
+serde_derive = "*"
+serde_json = "*"
+tokio-core = "*"
+tokio-service = { git = "https://github.com/tokio-rs/tokio-service" }
+uuid = { version = "*", features = ["serde"] }
