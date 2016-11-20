@@ -13,39 +13,26 @@ extern crate uuid;
 
 mod dispatcher;
 mod error;
+mod language;
 mod message_parser;
 mod messages;
+mod language_server_io;
+
+pub use language::Language;
 
 use futures::Future;
 use mio::channel;
-use std::process::{Child, Command};
+use std::process::{Command, Child, Stdio};
 use std::io;
-use std::io::{Read, Write};
-use tokio_core::reactor::Core;
+use tokio_core::reactor::{Core, PollEvented};
 use tokio_service::Service;
 use uuid::Uuid;
+use messages::{RequestMessage, ResponseMessage, RpcError};
+use language_server_io::LanguageServerIo;
 
 use messages::Notification;
 
 struct RpcClient;
-
-struct RequestMessage {
-    id: Uuid,
-    method: String,
-    params: String,
-}
-
-struct ResponseMessage<T> {
-    id: Uuid,
-    result: String,
-    error: T,
-}
-
-
-struct ResponseError {
-    id: String,
-    error: String,
-}
 
 impl Service for RpcClient {
     type Request = RequestMessage;
@@ -75,57 +62,32 @@ impl Service for NotificationServer {
 
 struct NotificationServer;
 
-trait Language {
-    fn start_language_server(&self) -> Result<Child, io::Error>;
-}
 
-struct Typescript;
-
-impl Language for Typescript {
-    fn start_language_server(&self) -> Result<Child, io::Error> {
-        Command::new("sh")
-            .arg("-c")
-            .arg("tsserver").spawn()
-    }
-}
-
-struct LanguageServer {
+pub struct LanguageServer {
     client: RpcClient,
-    notification_server: NotificationServer,
     core: Core,
+    notification_server: NotificationServer,
+    poll_evented: PollEvented<LanguageServerIo>,
 }
 
 impl LanguageServer {
     pub fn new<L: Language>(lang: L) -> Result<Self, io::Error> {
-        let child = lang.start_language_server()?;
+        let args = lang.get_command();
+        let child = Command::new(&args[0])
+            .args(&args[1..])
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()?;
         let core = Core::new()?;
+        let poll_evented = PollEvented::new(LanguageServerIo::new(child), &core.handle())?;
         let client = RpcClient {};
         let notification_server = NotificationServer {};
-        Ok(LanguageServer { core, client, notification_server })
-    }
-}
-
-#[cfg(test)]
-mod tests {
-
-    use super::{LanguageServer, Language};
-    use std::io;
-    use std::process::{Child, Command};
-
-    struct Cobol;
-
-    impl Language for Cobol {
-        fn start_language_server(&self) -> Result<Child, io::Error> {
-            Command::new("/bin/sh")
-                .arg("-c")
-                .arg("echo")
-                .arg("hi")
-                .spawn()
-        }
+        Ok(LanguageServer { core, client, notification_server, poll_evented })
     }
 
-    #[test]
-    fn language_server_new_does_not_panic() {
-        LanguageServer::new(Cobol).unwrap();
+    pub fn stop(self) -> Result<(), io::Error> {
+        self.poll_evented.deregister(&self.core.handle());
+        Ok(())
     }
 }

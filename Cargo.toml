@@ -1,5 +1,5 @@
 [package]
-name = "tokio-language-server-rpc"
+name = "tokio-language-server-protocol"
 version = "0.1.0"
 authors = ["Tom Houlé <tom@tomhoule.com>"]
 
@@ -10,6 +10,6 @@ mio = "*"
 serde = "*"
 serde_derive = "*"
 serde_json = "*"
-tokio-core = "*"
+tokio-core = { git = "https://github.com/tokio-rs/tokio-core" }
 tokio-service = { git = "https://github.com/tokio-rs/tokio-service" }
 uuid = { version = "*", features = ["serde"] }
