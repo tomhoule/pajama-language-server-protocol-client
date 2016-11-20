@@ -36,7 +36,7 @@ struct RequestMessage {
 }
 
 struct ResponseMessage<T> {
-    id: String,
+    id: Uuid,
     result: String,
     error: T,
 }
@@ -92,17 +92,16 @@ impl Language for Typescript {
 struct LanguageServer {
     client: RpcClient,
     notification_server: NotificationServer,
-    // child_receiver: channel::Receiver<String>,
-    reactor: Core,
+    core: Core,
 }
 
 impl LanguageServer {
     pub fn new<L: Language>(lang: L) -> Result<Self, io::Error> {
         let child = lang.start_language_server()?;
-        let reactor = Core::new()?;
+        let core = Core::new()?;
         let client = RpcClient {};
         let notification_server = NotificationServer {};
-        Ok(LanguageServer { reactor, client, notification_server })
+        Ok(LanguageServer { core, client, notification_server })
     }
 }
 
