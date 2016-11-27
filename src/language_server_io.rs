@@ -4,6 +4,17 @@ use mio::unix::EventedFd;
 use std::io::{Read, Write};
 use std::io;
 use std::os::unix::io::AsRawFd;
+use error::{Result as CustomResult};
+use codec::RpcCodec;
+use tokio_core::io::{Io, Framed};
+use tokio_core::reactor::{Handle, PollEvented};
+use std::rc::Rc;
+
+pub type IoWrapper = Rc<Framed<PollEvented<LanguageServerIo>, RpcCodec>>;
+
+pub fn make_io_wrapper(child: Child, handle: Handle) -> CustomResult<IoWrapper> {
+    Ok(Rc::new(PollEvented::new(LanguageServerIo::new(child), &handle)?.framed(RpcCodec)))
+}
 
 pub struct LanguageServerIo {
     child: Child,

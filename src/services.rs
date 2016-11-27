@@ -7,6 +7,7 @@ use std::collections::HashMap;
 use std::cell::RefCell;
 use std::rc::Rc;
 use crossbeam::sync::MsQueue;
+use language_server_io::IoWrapper;
 
 pub struct RequestHandle {
     id: Uuid,
@@ -28,12 +29,14 @@ impl Future for RequestHandle {
 }
 
 pub struct RpcClient {
+    io: IoWrapper,
     running_requests: Rc<RefCell<HashMap<Uuid, ResponseMessage>>>,
 }
 
 impl RpcClient {
-    pub fn new() -> RpcClient {
+    pub fn new(io: IoWrapper) -> RpcClient {
         RpcClient {
+            io,
             running_requests: Rc::new(RefCell::new(HashMap::<Uuid, ResponseMessage>::new()))
         }
     }
@@ -68,11 +71,22 @@ mod test {
     use messages::{RequestMessage, ResponseMessage};
     use tokio_service::Service;
     use futures::Future;
-    use tokio_core::reactor::{Core, Handle};
+    use tokio_core::reactor::Core;
+    use language_server_io::make_io_wrapper;
+    use std::process::{Command, Stdio};
 
     #[test]
     fn rpc_client_can_be_called() {
-        let client = RpcClient::new();
+        let core = Core::new().unwrap();
+        let child = Command::new("/bin/echo")
+            .arg("testing")
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .unwrap();
+        let io = make_io_wrapper(child, core.handle()).unwrap();
+        let client = RpcClient::new(io);
         let request = RequestMessage {
             id: Uuid::new_v4(),
             method: "test_method".to_string(),
@@ -85,7 +99,15 @@ mod test {
     #[test]
     fn rpc_client_can_match_responses_to_requests() {
         let mut core = Core::new().unwrap();
-        let client = RpcClient::new();
+        let child = Command::new("/bin/echo")
+            .arg("testing")
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .unwrap();
+        let io = make_io_wrapper(child, core.handle()).unwrap();
+        let client = RpcClient::new(io);
         let request_id = Uuid::new_v4();
         let request = RequestMessage {
             id: request_id,

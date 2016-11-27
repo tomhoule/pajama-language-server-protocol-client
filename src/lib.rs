@@ -20,26 +20,25 @@ mod language_server_io;
 mod message_parser;
 mod messages;
 mod services;
+mod worker;
 
 pub use language::Language;
 
-use codec::RpcCodec;
 use std::process::{Command, Stdio};
-use std::io;
-use tokio_core::reactor::{Core, PollEvented};
-use tokio_core::io::{Io, Framed};
-use language_server_io::LanguageServerIo;
+use error::Result;
+use tokio_core::reactor::Core;
+use language_server_io::{make_io_wrapper, IoWrapper};
 use services::{NotificationServer, RpcClient};
 
 pub struct LanguageServer {
     client: RpcClient,
     core: Core,
     notification_server: NotificationServer,
-    interface: Framed<PollEvented<LanguageServerIo>, RpcCodec>,
+    interface: IoWrapper,
 }
 
 impl LanguageServer {
-    pub fn new<L: Language>(lang: L) -> Result<Self, io::Error> {
+    pub fn new<L: Language>(lang: L) -> Result<Self> {
         let args = lang.get_command();
         let child = Command::new(&args[0])
             .args(&args[1..])
@@ -48,13 +47,9 @@ impl LanguageServer {
             .stderr(Stdio::piped())
             .spawn()?;
         let core = Core::new()?;
-        let interface = PollEvented::new(LanguageServerIo::new(child), &core.handle())?.framed(RpcCodec);
-        let client = RpcClient::new();
+        let interface = make_io_wrapper(child, core.handle())?;
+        let client = RpcClient::new(interface.clone());
         let notification_server = NotificationServer::new();
         Ok(LanguageServer { core, client, notification_server, interface })
-    }
-
-    pub fn stop(self) -> Result<(), io::Error> {
-        self.interface.into_inner().deregister(&self.core.handle())
     }
 }
