@@ -7,21 +7,21 @@ use messages::Notification;
 use std::ops::Deref;
 use std::rc::Rc;
 
-pub struct Worker {
-    notifications: &'static MsQueue<Notification>,
-    client: &'static RpcClient,
+pub struct Worker<'a> {
+    notifications: &'a MsQueue<Notification>,
+    client: &'a RpcClient,
     io: IoWrapper,
 }
 
-impl Worker {
-    pub fn new(notifications: &'static MsQueue<Notification>, client: &'static RpcClient, io: IoWrapper) -> Self {
+impl<'a> Worker<'a> {
+    pub fn new(notifications: &'a MsQueue<Notification>, client: &'a RpcClient, io: IoWrapper) -> Self {
         Worker {
             notifications, client, io
         }
     }
 }
 
-impl Future for Worker {
+impl<'a> Future for Worker<'a> {
     type Item = ();
     type Error = ();
 
