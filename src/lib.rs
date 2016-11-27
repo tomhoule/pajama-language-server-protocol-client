@@ -3,7 +3,7 @@
 
 #[macro_use] extern crate chomp;
 extern crate crossbeam;
-extern crate futures;
+#[macro_use] extern crate futures;
 extern crate mio;
 extern crate serde;
 #[macro_use] extern crate serde_derive;
@@ -31,6 +31,10 @@ use language_server_io::{make_io_wrapper, IoWrapper};
 use services::{NotificationServer, RpcClient};
 use worker::Worker;
 use std::rc::Rc;
+use std::collections::HashMap;
+use uuid::Uuid;
+use messages::{Notification, RequestMessage, ResponseMessage};
+use futures::sync::mpsc;
 
 
 /// To be added:
@@ -56,14 +60,12 @@ impl LanguageServer {
             .stderr(Stdio::piped())
             .spawn()?;
         let core = Core::new()?;
+        let (responses_sender, responses_receiver) = mpsc::unbounded();
         let interface = Rc::new(make_io_wrapper(child, core.handle())?);
-        let client = Rc::new(RpcClient::new(interface.clone()));
+        let client = Rc::new(RpcClient::new(interface.clone(), responses_receiver, core.handle()));
         let notifications = Rc::new(NotificationServer::new());
+        let worker = Worker::new(notifications.clone(), responses_sender, interface.clone());
+        core.handle().spawn(worker);
         Ok(LanguageServer { core, client, notifications, interface })
-    }
-
-    pub fn start(&mut self) {
-        let worker = Worker::new(self.notifications.clone(), self.client.clone(), self.interface.clone());
-        self.core.handle().spawn(worker)
     }
 }

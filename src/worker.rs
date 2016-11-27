@@ -3,22 +3,23 @@ use futures::stream::{Stream};
 use crossbeam::sync::MsQueue;
 use services::RpcClient;
 use language_server_io::IoWrapper;
-use messages::Notification;
+use messages::{ResponseMessage, Notification};
 use std::ops::Deref;
 use std::rc::Rc;
+use futures::sync::mpsc;
 
 /// When Framed.split will be stabilized in tokio_core, we can make this static by using channels
 /// for notifications and responses, and taking ownership of the FramedRead here
 pub struct Worker {
     notifications: Rc<MsQueue<Notification>>,
-    client: Rc<RpcClient>,
+    responses_sink: mpsc::UnboundedSender<ResponseMessage>,
     io: Rc<IoWrapper>,
 }
 
 impl Worker {
-    pub fn new(notifications: Rc<MsQueue<Notification>>, client: Rc<RpcClient>, io: Rc<IoWrapper>) -> Self {
+    pub fn new(notifications: Rc<MsQueue<Notification>>, responses_sink: mpsc::UnboundedSender<ResponseMessage>, io: Rc<IoWrapper>) -> Self {
         Worker {
-            notifications, client, io
+            notifications, responses_sink, io
         }
     }
 }

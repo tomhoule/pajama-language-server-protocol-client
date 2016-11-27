@@ -1,4 +1,5 @@
 use futures::{Async, Future, Poll};
+use futures::stream::{Peekable, Stream};
 use tokio_service::Service;
 use messages::{Notification, RequestMessage, ResponseMessage};
 use error::{Error};
@@ -8,10 +9,13 @@ use std::cell::RefCell;
 use std::rc::Rc;
 use crossbeam::sync::MsQueue;
 use language_server_io::IoWrapper;
+use futures::sync::mpsc;
+use tokio_core::reactor::Handle;
+use std::sync::Mutex;
 
 pub struct RequestHandle {
     id: Uuid,
-    map: Rc<RefCell<HashMap<Uuid, ResponseMessage>>>,
+    receiver: Rc<RefCell<Peekable<mpsc::UnboundedReceiver<ResponseMessage>>>>,
 }
 
 impl Future for RequestHandle {
@@ -19,31 +23,39 @@ impl Future for RequestHandle {
     type Error = Error;
 
     fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
-        let mut map = self.map.borrow_mut();
-        if let Some(response) = map.remove(&self.id) {
-            Ok(Async::Ready(response))
-        } else {
-            Ok(Async::NotReady)
+        let mut receiver = self.receiver.borrow_mut();
+        {
+            match receiver.peek() {
+                Ok(Async::Ready(Some(response))) => {
+                    if response.id != self.id {
+                        return Ok(Async::NotReady)
+                    }
+                },
+                response => {
+                    return Ok(Async::NotReady)
+                }
+            }
+        }
+        match receiver.poll() {
+            Ok(Async::Ready(Some(response))) => {
+                Ok(Async::Ready(response))
+            },
+            _ => Err(Error::OOL)
         }
     }
 }
 
 pub struct RpcClient {
     io: Rc<IoWrapper>,
-    running_requests: Rc<RefCell<HashMap<Uuid, ResponseMessage>>>,
+    responses: Rc<RefCell<Peekable<mpsc::UnboundedReceiver<ResponseMessage>>>>,
 }
 
 impl RpcClient {
-    pub fn new(io: Rc<IoWrapper>) -> RpcClient {
+    pub fn new(write_half: Rc<IoWrapper>, receiver: mpsc::UnboundedReceiver<ResponseMessage>, handle: Handle) -> RpcClient {
         RpcClient {
-            io,
-            running_requests: Rc::new(RefCell::new(HashMap::<Uuid, ResponseMessage>::new()))
+            io: write_half,
+            responses: Rc::new(RefCell::new(receiver.peekable())),
         }
-    }
-
-    pub fn handle_response(&self, response: ResponseMessage) {
-        let mut map = self.running_requests.borrow_mut();
-        map.insert(response.id, response);
     }
 }
 
@@ -54,10 +66,10 @@ impl Service for RpcClient {
     type Future = RequestHandle;
 
     fn call(&self, request: Self::Request) -> Self::Future {
-        // here send to the language server stdin
+        // here write to the language server stdin
         RequestHandle {
             id: request.id.clone(),
-            map: self.running_requests.clone()
+            receiver: self.responses.clone(),
         }
     }
 }
@@ -71,13 +83,19 @@ mod test {
     use messages::{RequestMessage, ResponseMessage};
     use tokio_service::Service;
     use futures::Future;
-    use tokio_core::reactor::Core;
+    use tokio_core::reactor::{Core, Interval};
     use language_server_io::make_io_wrapper;
     use std::process::{Command, Stdio};
+    use std::rc::Rc;
+    use futures::sync::mpsc;
+    use futures::sink::Sink;
+    use futures::stream::{iter, Stream};
+    use std::time::Duration;
 
     #[test]
     fn rpc_client_can_be_called() {
         let core = Core::new().unwrap();
+        let (_, receiver) = mpsc::unbounded();
         let child = Command::new("/bin/echo")
             .arg("testing")
             .stdin(Stdio::piped())
@@ -85,8 +103,8 @@ mod test {
             .stderr(Stdio::piped())
             .spawn()
             .unwrap();
-        let io = make_io_wrapper(child, core.handle()).unwrap();
-        let client = RpcClient::new(io);
+        let io = Rc::new(make_io_wrapper(child, core.handle()).unwrap());
+        let client = RpcClient::new(io, receiver, core.handle());
         let request = RequestMessage {
             id: Uuid::new_v4(),
             method: "test_method".to_string(),
@@ -99,15 +117,15 @@ mod test {
     #[test]
     fn rpc_client_can_match_responses_to_requests() {
         let mut core = Core::new().unwrap();
-        let child = Command::new("/bin/echo")
-            .arg("testing")
+        let (sender, receiver) = mpsc::unbounded();
+        let child = Command::new("/usr/bin/tee")
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .spawn()
             .unwrap();
-        let io = make_io_wrapper(child, core.handle()).unwrap();
-        let client = RpcClient::new(io);
+        let io = Rc::new(make_io_wrapper(child, core.handle()).unwrap());
+        let client = RpcClient::new(io, receiver, core.handle());
         let request_id = Uuid::new_v4();
         let request = RequestMessage {
             id: request_id,
@@ -139,10 +157,10 @@ mod test {
 
         let future_2 = client.call(request_2);
 
-        client.handle_response(response_2.clone());
-        client.handle_response(response.clone());
+        sender.send_all(iter(vec!(Ok(response_2.clone()), Ok(response.clone())))).wait();
 
-        assert_eq!(core.run(future).unwrap(), response);
+        // Need to be in this order because we are running them synchronously here
         assert_eq!(core.run(future_2).unwrap(), response_2);
+        assert_eq!(core.run(future).unwrap(), response);
     }
 }
