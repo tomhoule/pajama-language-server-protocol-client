@@ -46,11 +46,6 @@ fn content<'a, I: U8Input<Token=u8, Buffer=&'a [u8]>>(i: I, size: usize) -> Simp
     take(i, size).bind(|i, bytes| i.ret(bytes))
 }
 
-struct Message {
-    headers: Headers,
-    content: json::Value,
-}
-
 fn message<'a, I: U8Input<Buffer=&'a [u8], Token=u8>>(i: I) -> SimpleResult<I, Result<json::Value, json::Error>> {
     headers(i).bind(|i, headers| {
         content(i, headers.content_length)
