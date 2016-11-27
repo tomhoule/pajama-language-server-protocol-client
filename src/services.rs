@@ -1,17 +1,13 @@
-use futures::{Async, Future, Poll};
-use futures::stream::{Peekable, Stream};
+use futures::{Async, Future, Poll, Sink};
+use futures::stream::{Peekable, Stream, SplitSink};
+use futures::sync::mpsc;
 use tokio_service::Service;
 use messages::{Notification, RequestMessage, ResponseMessage};
 use error::{Error};
 use uuid::Uuid;
-use std::collections::HashMap;
 use std::cell::RefCell;
 use std::rc::Rc;
-use crossbeam::sync::MsQueue;
 use language_server_io::IoWrapper;
-use futures::sync::mpsc;
-use tokio_core::reactor::Handle;
-use std::sync::Mutex;
 
 pub struct RequestHandle {
     id: Uuid,
@@ -46,14 +42,14 @@ impl Future for RequestHandle {
 }
 
 pub struct RpcClient {
-    io: Rc<IoWrapper>,
+    server_input: SplitSink<IoWrapper>,
     responses: Rc<RefCell<Peekable<mpsc::UnboundedReceiver<ResponseMessage>>>>,
 }
 
 impl RpcClient {
-    pub fn new(write_half: Rc<IoWrapper>, receiver: mpsc::UnboundedReceiver<ResponseMessage>, handle: Handle) -> RpcClient {
+    pub fn new(server_input: SplitSink<IoWrapper>, receiver: mpsc::UnboundedReceiver<ResponseMessage>) -> RpcClient {
         RpcClient {
-            io: write_half,
+            server_input,
             responses: Rc::new(RefCell::new(receiver.peekable())),
         }
     }
@@ -66,7 +62,8 @@ impl Service for RpcClient {
     type Future = RequestHandle;
 
     fn call(&self, request: Self::Request) -> Self::Future {
-        // here write to the language server stdin
+        // self.server_input.start_send(request).unwrap();
+        // self.server_input.poll_complete().unwrap();
         RequestHandle {
             id: request.id.clone(),
             receiver: self.responses.clone(),
@@ -74,23 +71,18 @@ impl Service for RpcClient {
     }
 }
 
-pub type NotificationServer = MsQueue<Notification>;
-
 #[cfg(test)]
 mod test {
     use super::RpcClient;
     use uuid::Uuid;
     use messages::{RequestMessage, ResponseMessage};
     use tokio_service::Service;
-    use futures::Future;
-    use tokio_core::reactor::{Core, Interval};
+    use futures::{Future, Sink};
+    use futures::sync::mpsc;
+    use futures::stream::{iter, Stream};
+    use tokio_core::reactor::Core;
     use language_server_io::make_io_wrapper;
     use std::process::{Command, Stdio};
-    use std::rc::Rc;
-    use futures::sync::mpsc;
-    use futures::sink::Sink;
-    use futures::stream::{iter, Stream};
-    use std::time::Duration;
 
     #[test]
     fn rpc_client_can_be_called() {
@@ -103,8 +95,8 @@ mod test {
             .stderr(Stdio::piped())
             .spawn()
             .unwrap();
-        let io = Rc::new(make_io_wrapper(child, core.handle()).unwrap());
-        let client = RpcClient::new(io, receiver, core.handle());
+        let (sink, _) = make_io_wrapper(child, core.handle()).unwrap().split();
+        let client = RpcClient::new(sink, receiver);
         let request = RequestMessage {
             id: Uuid::new_v4(),
             method: "test_method".to_string(),
@@ -124,8 +116,8 @@ mod test {
             .stderr(Stdio::piped())
             .spawn()
             .unwrap();
-        let io = Rc::new(make_io_wrapper(child, core.handle()).unwrap());
-        let client = RpcClient::new(io, receiver, core.handle());
+        let (sink, _) = make_io_wrapper(child, core.handle()).unwrap().split();
+        let client = RpcClient::new(sink, receiver);
         let request_id = Uuid::new_v4();
         let request = RequestMessage {
             id: request_id,
@@ -157,7 +149,7 @@ mod test {
 
         let future_2 = client.call(request_2);
 
-        sender.send_all(iter(vec!(Ok(response_2.clone()), Ok(response.clone())))).wait();
+        sender.send_all(iter(vec!(Ok(response_2.clone()), Ok(response.clone())))).wait().unwrap();
 
         // Need to be in this order because we are running them synchronously here
         assert_eq!(core.run(future_2).unwrap(), response_2);

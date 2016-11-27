@@ -8,7 +8,6 @@ use error::{Result as CustomResult};
 use codec::RpcCodec;
 use tokio_core::io::{Io, Framed};
 use tokio_core::reactor::{Handle, PollEvented};
-use std::rc::Rc;
 
 pub type IoWrapper = Framed<PollEvented<LanguageServerIo>, RpcCodec>;
 

@@ -2,8 +2,7 @@
 #![feature(field_init_shorthand)]
 
 #[macro_use] extern crate chomp;
-extern crate crossbeam;
-#[macro_use] extern crate futures;
+extern crate futures;
 extern crate mio;
 extern crate serde;
 #[macro_use] extern crate serde_derive;
@@ -27,27 +26,19 @@ pub use language::Language;
 use std::process::{Command, Stdio};
 use error::Result as CustomResult;
 use tokio_core::reactor::Core;
-use language_server_io::{make_io_wrapper, IoWrapper};
-use services::{NotificationServer, RpcClient};
+use language_server_io::{make_io_wrapper};
+use services::{RpcClient, RequestHandle};
 use worker::Worker;
-use std::rc::Rc;
-use std::collections::HashMap;
 use uuid::Uuid;
-use messages::{Notification, RequestMessage, ResponseMessage};
+use messages::{Notification, RequestMessage};
 use futures::sync::mpsc;
+use tokio_service::Service;
+use futures::stream::Stream;
 
 
-/// To be added:
-/// The interface member will disappear, because it will be split and sent into the worker for the
-/// read half and the client for the write half.
-/// Notifications should just be a receiver, (but with a queue api?)
-/// We need the RpcCient to have a responselistener (?), also a future, that reads from the worker
-/// channel and handles the responses. Maybe an impl future for client itself?
 pub struct LanguageServer {
-    client: Rc<RpcClient>,
-    core: Core,
-    pub notifications: Rc<NotificationServer>,
-    interface: Rc<IoWrapper>,
+    client: RpcClient,
+    pub notifications: Box<Stream<Item=Notification, Error=()>>,
 }
 
 impl LanguageServer {
@@ -61,11 +52,21 @@ impl LanguageServer {
             .spawn()?;
         let core = Core::new()?;
         let (responses_sender, responses_receiver) = mpsc::unbounded();
-        let interface = Rc::new(make_io_wrapper(child, core.handle())?);
-        let client = Rc::new(RpcClient::new(interface.clone(), responses_receiver, core.handle()));
-        let notifications = Rc::new(NotificationServer::new());
-        let worker = Worker::new(notifications.clone(), responses_sender, interface.clone());
+        let (notifications_sender, notifications_receiver) = mpsc::unbounded();
+        let (sink, stream) = make_io_wrapper(child, core.handle())?.split();
+        let client = RpcClient::new(sink, responses_receiver);
+
+        let worker = Worker::new(notifications_sender, responses_sender, stream);
         core.handle().spawn(worker);
-        Ok(LanguageServer { core, client, notifications, interface })
+
+        Ok(LanguageServer { client, notifications: Box::new(notifications_receiver) })
+    }
+
+    pub fn initialize(&self) -> RequestHandle {
+        self.client.call(RequestMessage {
+            id: Uuid::new_v4(),
+            method: "initialize".to_string(),
+            params: String::new(),
+        })
     }
 }
