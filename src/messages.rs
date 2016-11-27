@@ -1,7 +1,6 @@
 use serde_json as json;
 use uuid::Uuid;
-use error::{Result, Error};
-
+use std::iter::{FromIterator, IntoIterator};
 
 // #[derive(Debug)]
 // enum ErrorCode {
@@ -14,28 +13,50 @@ use error::{Result, Error};
 //     serverErrorEnd, // -32000
 // }
 
-#[derive(Debug, Deserialize)]
+
+#[derive(Debug)]
+pub enum IncomingMessage {
+    Response(ResponseMessage),
+    Notification(Notification),
+    MultipleMessages(Vec<IncomingMessage>),
+}
+
+impl FromIterator<IncomingMessage> for IncomingMessage {
+    fn from_iter<T>(iter: T) -> Self
+        where T: IntoIterator<Item=IncomingMessage>
+        {
+            IncomingMessage::MultipleMessages(Vec::from_iter(iter))
+        }
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub enum Message {
+    Incoming,
+    Request(RequestMessage),
+}
+
+#[derive(Debug, Deserialize, Serialize)]
 pub struct RpcError {
     pub code: i32,
     pub message: String,
     pub data: Option<json::Value>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 pub struct RequestMessage {
     pub id: Uuid,
     pub method: String,
     pub params: String,
 }
 
-#[derive(Debug, Deserialize)]
-pub struct ResponseMessage<T> {
-    pub id: String,
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct ResponseMessage {
+    pub id: Uuid,
     pub result: String,
-    pub error: Option<T>,
+    pub error: Option<String>,
 }
 
-#[derive(Debug, Deserialize, PartialEq)]
+#[derive(Debug, Deserialize, PartialEq, Serialize)]
 pub struct Notification {
     pub method: String,
     pub params: String,

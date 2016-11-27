@@ -12,4 +12,4 @@ serde_derive = "*"
 serde_json = "*"
 tokio-core = { git = "https://github.com/tokio-rs/tokio-core" }
 tokio-service = { git = "https://github.com/tokio-rs/tokio-service" }
-uuid = { version = "*", features = ["serde"] }
+uuid = { version = "*", features = ["serde", "v4"] }

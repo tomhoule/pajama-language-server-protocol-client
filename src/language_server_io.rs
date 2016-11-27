@@ -1,13 +1,8 @@
-use tokio_core::io::{Codec, Io, Framed};
-use tokio_core::reactor::Handle;
 use std::process::{Child, ChildStdin, ChildStdout};
-use error::{Error};
 use mio::{Evented, Poll, Token, Ready, PollOpt};
 use mio::unix::EventedFd;
-use futures::Async;
 use std::io::{Read, Write};
 use std::io;
-use std::fmt;
 use std::os::unix::io::AsRawFd;
 
 pub struct LanguageServerIo {
@@ -111,7 +106,6 @@ mod tests {
     use mio::{Evented, Poll, PollOpt, Token, Ready};
     use super::LanguageServerIo;
     use std::process::{Command, Stdio};
-    use std::io::{Read, Write};
 
     #[test]
     fn test_poll() {

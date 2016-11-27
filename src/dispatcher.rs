@@ -1,48 +1,24 @@
-use serde_json::{Map, Value, from_value, to_value};
+use serde_json::{Map, Value, from_value};
 use messages;
-use messages::RpcError;
-use std::iter::{FromIterator, IntoIterator};
-use std::result::Result;
+use messages::IncomingMessage;
+use std::iter::{IntoIterator};
 use error::Error;
-use serde::Deserialize;
-
-#[derive(Debug)]
-pub enum IncomingMessage {
-    SuccessResponse(messages::ResponseMessage<()>),
-    ErrorResponse(messages::ResponseMessage<messages::RpcError>),
-    Notification(messages::Notification),
-    MultipleMessages(Vec<IncomingMessage>),
-}
-
-impl FromIterator<IncomingMessage> for IncomingMessage {
-    fn from_iter<T>(iter: T) -> Self
-        where T: IntoIterator<Item=IncomingMessage>
-        {
-            IncomingMessage::MultipleMessages(Vec::from_iter(iter))
-        }
-}
 
 fn handle_object(json_object: Map<String, Value>) -> Result<IncomingMessage, Error> {
-    if let Some(_) = json_object.get("id").clone() {
-        match json_object.get("error").clone() {
-            Some(stg) => {
-                Ok(IncomingMessage::ErrorResponse(from_value::<messages::ResponseMessage<RpcError>>(Value::Object(json_object.clone()))?))
-            },
-            None => {
-                Ok(IncomingMessage::SuccessResponse(from_value::<messages::ResponseMessage<()>>(Value::Object(json_object.clone()))?))
-            }
-        }
+    if let Some(_) = json_object.get("id") {
+        let deserialized_response = from_value::<messages::ResponseMessage>(Value::Object(json_object.clone()))?;
+        Ok(IncomingMessage::Response(deserialized_response))
     } else {
         Ok(IncomingMessage::Notification(from_value::<messages::Notification>(Value::Object(json_object.clone()))?))
     }
 }
 
 
-pub fn handle_raw_message(rawMessage: Value) -> Result<IncomingMessage, Error> {
-    match rawMessage {
+pub fn handle_raw_message(raw_message: Value) -> Result<IncomingMessage, Error> {
+    match raw_message {
         Value::Object(message) => handle_object(message),
         Value::Array(messages) => messages.into_iter().map(|m| handle_raw_message(m)).collect(),
-        _ => Err(Error::new())
+        _ => Err(Error::OOL)
     }
 }
 
@@ -50,9 +26,9 @@ pub fn handle_raw_message(rawMessage: Value) -> Result<IncomingMessage, Error> {
 mod tests {
 
     use messages;
-    use super::{IncomingMessage, handle_raw_message};
+    use super::handle_raw_message;
+    use messages::IncomingMessage;
     use serde_json::builder;
-    use std::result::Result;
 
     #[test]
     fn handle_raw_message_works_with_arrays_of_messages() {
@@ -83,32 +59,4 @@ mod tests {
         }
     }
 
-    #[test]
-    fn handle_raw_message_can_discriminate_between_error_and_success_responses() {
-        let success_message = builder::ObjectBuilder::new()
-            .insert("id", "48616c6c-6f20-7275-7374-206568206568")
-            .insert("result", "frobnicate")
-            .build();
-        let error_message = builder::ObjectBuilder::new()
-            .insert("id", "48616c6c-6f20-7275-7374-206568206568")
-            .insert("result", "frobnicate")
-            .insert_object("error", |builder| {
-                builder.insert("code", 22)
-                       .insert("message", "foo".to_string())
-
-            })
-            .build();
-
-        match handle_raw_message(success_message) {
-            Ok(IncomingMessage::SuccessResponse(_)) => (),
-            Err(wrong_result) => panic!(wrong_result),
-            wrong_result => panic!(wrong_result)
-        }
-
-        match handle_raw_message(error_message) {
-            Ok(IncomingMessage::ErrorResponse(_)) => (),
-            Err(wrong_result) => panic!(wrong_result),
-            wrong_result => panic!(wrong_result)
-        }
-    }
 }

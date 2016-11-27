@@ -2,12 +2,10 @@
 //! the language server stdout.
 use chomp::ascii::{is_horizontal_space, is_whitespace, skip_whitespace};
 use chomp::prelude::*;
-use std::io::Read;
+use chomp;
 use std::iter::FromIterator;
-use std::collections::HashMap;
 use std::str;
 use serde_json as json;
-use serde::Deserialize;
 
 fn header<'a, I: U8Input<Buffer=&'a [u8], Token=u8>>(i: I) -> SimpleResult<I, HeaderType> {
     parse!{i;
@@ -53,12 +51,16 @@ struct Message {
     content: json::Value,
 }
 
-pub fn message<'a, I: U8Input<Buffer=&'a [u8], Token=u8>>(i: I) -> SimpleResult<I, Result<json::Value, json::Error>> {
+fn message<'a, I: U8Input<Buffer=&'a [u8], Token=u8>>(i: I) -> SimpleResult<I, Result<json::Value, json::Error>> {
     headers(i).bind(|i, headers| {
         content(i, headers.content_length)
     }).bind(|i, buffer| {
         i.ret(json::from_slice(buffer))
     })
+}
+
+pub fn parse_message(msg: &[u8]) -> Result<Result<json::Value, json::Error>, (&[u8], chomp::parsers::Error<u8>)> {
+    parse_only(message, msg)
 }
 
 type ContentLength = usize;
@@ -109,9 +111,7 @@ impl FromIterator<HeaderType> for Headers {
 mod test {
     use serde_json::builder::ObjectBuilder;
     use chomp::prelude::*;
-    use super::{Message, Headers, HeaderType, header, headers, content, message};
-    use std::io::Read;
-use std::str;
+    use super::{HeaderType, header, headers, content, message};
 
     #[test]
     fn header_parser_works() {

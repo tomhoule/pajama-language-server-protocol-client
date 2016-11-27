@@ -16,12 +16,6 @@ pub enum Error {
     OOL
 }
 
-impl Error {
-    pub fn new() -> Self {
-        Error::OOL
-    }
-}
-
 impl From<()> for Error {
     fn from(_: ()) -> Self {
         Error::OOL
