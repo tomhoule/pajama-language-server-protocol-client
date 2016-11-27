@@ -6,12 +6,11 @@ use uuid::Uuid;
 use std::collections::HashMap;
 use tokio_core::reactor::Handle;
 use std::cell::RefCell;
-use std::sync::{RwLock};
-use std::rc::{Rc};
+use std::rc::Rc;
 
 pub struct RequestHandle {
     id: Uuid,
-    map: Rc<RwLock<RefCell<HashMap<Uuid, ResponseMessage>>>>,
+    map: Rc<RefCell<HashMap<Uuid, ResponseMessage>>>,
 }
 
 impl Future for RequestHandle {
@@ -19,8 +18,7 @@ impl Future for RequestHandle {
     type Error = Error;
 
     fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
-        let guard = self.map.write().unwrap();
-        let mut map = guard.borrow_mut();
+        let mut map = self.map.borrow_mut();
         if let Some(response) = map.remove(&self.id) {
             Ok(Async::Ready(response))
         } else {
@@ -31,20 +29,19 @@ impl Future for RequestHandle {
 
 pub struct RpcClient {
     event_loop: Handle,
-    running_requests: Rc<RwLock<RefCell<HashMap<Uuid, ResponseMessage>>>>,
+    running_requests: Rc<RefCell<HashMap<Uuid, ResponseMessage>>>,
 }
 
 impl RpcClient {
     pub fn new(event_loop: Handle) -> RpcClient {
         RpcClient {
             event_loop,
-            running_requests: Rc::new(RwLock::new(RefCell::new(HashMap::<Uuid, ResponseMessage>::new())))
+            running_requests: Rc::new(RefCell::new(HashMap::<Uuid, ResponseMessage>::new()))
         }
     }
 
     pub fn handle_response(&self, response: ResponseMessage) {
-        let guard = self.running_requests.write().unwrap();
-        let mut map = guard.borrow_mut();
+        let mut map = self.running_requests.borrow_mut();
         map.insert(response.id, response);
     }
 }
