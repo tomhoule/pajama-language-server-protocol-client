@@ -6,7 +6,7 @@ authors = ["Tom Houlé <tom@tomhoule.com>"]
 [dependencies]
 chomp = "*"
 crossbeam = "*"
-futures = { git = "https://github.com/alexcrichton/futures-rs" }
+futures = "*"
 mio = "*"
 serde = "*"
 serde_derive = "*"

@@ -23,8 +23,8 @@ impl Codec for RpcCodec {
         }
     }
 
-    fn encode(&mut self, msg: Self::Out, buf: &mut Vec<u8>) {
-        json::to_writer(buf, &msg).unwrap();
+    fn encode(&mut self, msg: Self::Out, buf: &mut Vec<u8>) -> Result<(), io::Error> {
+        json::to_writer(buf, &msg).map_err(|err| io::Error::new(io::ErrorKind::Other, err))
     }
 }
 
