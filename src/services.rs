@@ -48,14 +48,14 @@ impl Service for RpcClient {
     type Request = RequestMessage;
     type Response = ResponseMessage;
     type Error = Error;
-    type Future = Box<Future<Item=Self::Response, Error=Self::Error>>;
+    type Future = RequestHandle;
 
     fn call(&self, request: Self::Request) -> Self::Future {
         // here send to the language server stdin
-        Box::new(RequestHandle {
+        RequestHandle {
             id: request.id.clone(),
             map: self.running_requests.clone()
-        })
+        }
     }
 }
 
