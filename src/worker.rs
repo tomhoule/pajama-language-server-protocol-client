@@ -7,21 +7,23 @@ use messages::Notification;
 use std::ops::Deref;
 use std::rc::Rc;
 
-pub struct Worker<'a> {
-    notifications: &'a MsQueue<Notification>,
-    client: &'a RpcClient,
-    io: IoWrapper,
+/// When Framed.split will be stabilized in tokio_core, we can make this static by using channels
+/// for notifications and responses, and taking ownership of the FramedRead here
+pub struct Worker {
+    notifications: Rc<MsQueue<Notification>>,
+    client: Rc<RpcClient>,
+    io: Rc<IoWrapper>,
 }
 
-impl<'a> Worker<'a> {
-    pub fn new(notifications: &'a MsQueue<Notification>, client: &'a RpcClient, io: IoWrapper) -> Self {
+impl Worker {
+    pub fn new(notifications: Rc<MsQueue<Notification>>, client: Rc<RpcClient>, io: Rc<IoWrapper>) -> Self {
         Worker {
             notifications, client, io
         }
     }
 }
 
-impl<'a> Future for Worker<'a> {
+impl Future for Worker {
     type Item = ();
     type Error = ();
 

@@ -10,10 +10,10 @@ use tokio_core::io::{Io, Framed};
 use tokio_core::reactor::{Handle, PollEvented};
 use std::rc::Rc;
 
-pub type IoWrapper = Rc<Framed<PollEvented<LanguageServerIo>, RpcCodec>>;
+pub type IoWrapper = Framed<PollEvented<LanguageServerIo>, RpcCodec>;
 
 pub fn make_io_wrapper(child: Child, handle: Handle) -> CustomResult<IoWrapper> {
-    Ok(Rc::new(PollEvented::new(LanguageServerIo::new(child), &handle)?.framed(RpcCodec)))
+    Ok(PollEvented::new(LanguageServerIo::new(child), &handle)?.framed(RpcCodec))
 }
 
 pub struct LanguageServerIo {

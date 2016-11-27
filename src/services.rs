@@ -29,12 +29,12 @@ impl Future for RequestHandle {
 }
 
 pub struct RpcClient {
-    io: IoWrapper,
+    io: Rc<IoWrapper>,
     running_requests: Rc<RefCell<HashMap<Uuid, ResponseMessage>>>,
 }
 
 impl RpcClient {
-    pub fn new(io: IoWrapper) -> RpcClient {
+    pub fn new(io: Rc<IoWrapper>) -> RpcClient {
         RpcClient {
             io,
             running_requests: Rc::new(RefCell::new(HashMap::<Uuid, ResponseMessage>::new()))
