@@ -6,6 +6,7 @@ use uuid::Uuid;
 use std::collections::HashMap;
 use std::cell::RefCell;
 use std::rc::Rc;
+use crossbeam::sync::MsQueue;
 
 pub struct RequestHandle {
     id: Uuid,
@@ -58,21 +59,7 @@ impl Service for RpcClient {
     }
 }
 
-pub struct NotificationServer;
-
-impl Service for NotificationServer {
-    type Request = Notification;
-    type Response = ();
-    type Error = ();
-    type Future = Box<Future<Item=Self::Response, Error=()>>;
-
-    fn call(&self, request: Self::Request) -> Self::Future {
-        // here, just handle the notification
-        match request {
-            _ => unimplemented!()
-        }
-    }
-}
+pub type NotificationServer = MsQueue<Notification>;
 
 #[cfg(test)]
 mod test {

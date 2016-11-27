@@ -2,6 +2,7 @@
 #![feature(field_init_shorthand)]
 
 #[macro_use] extern crate chomp;
+extern crate crossbeam;
 extern crate futures;
 extern crate mio;
 extern crate serde;
@@ -49,7 +50,7 @@ impl LanguageServer {
         let core = Core::new()?;
         let interface = PollEvented::new(LanguageServerIo::new(child), &core.handle())?.framed(RpcCodec);
         let client = RpcClient::new();
-        let notification_server = NotificationServer {};
+        let notification_server = NotificationServer::new();
         Ok(LanguageServer { core, client, notification_server, interface })
     }
 
