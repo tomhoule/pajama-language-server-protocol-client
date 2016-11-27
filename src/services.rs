@@ -1,10 +1,9 @@
 use futures::{Async, Future, Poll};
 use tokio_service::Service;
 use messages::{Notification, RequestMessage, ResponseMessage};
-use error::{Error, Result};
+use error::{Error};
 use uuid::Uuid;
 use std::collections::HashMap;
-use tokio_core::reactor::Handle;
 use std::cell::RefCell;
 use std::rc::Rc;
 
@@ -28,14 +27,12 @@ impl Future for RequestHandle {
 }
 
 pub struct RpcClient {
-    event_loop: Handle,
     running_requests: Rc<RefCell<HashMap<Uuid, ResponseMessage>>>,
 }
 
 impl RpcClient {
-    pub fn new(event_loop: Handle) -> RpcClient {
+    pub fn new() -> RpcClient {
         RpcClient {
-            event_loop,
             running_requests: Rc::new(RefCell::new(HashMap::<Uuid, ResponseMessage>::new()))
         }
     }
@@ -83,13 +80,12 @@ mod test {
     use uuid::Uuid;
     use messages::{RequestMessage, ResponseMessage};
     use tokio_service::Service;
-    use futures::{Async, Future};
+    use futures::Future;
     use tokio_core::reactor::{Core, Handle};
 
     #[test]
     fn rpc_client_can_be_called() {
-        let core = Core::new().unwrap();
-        let client = RpcClient::new(core.handle());
+        let client = RpcClient::new();
         let request = RequestMessage {
             id: Uuid::new_v4(),
             method: "test_method".to_string(),
@@ -102,7 +98,7 @@ mod test {
     #[test]
     fn rpc_client_can_match_responses_to_requests() {
         let mut core = Core::new().unwrap();
-        let client = RpcClient::new(core.handle());
+        let client = RpcClient::new();
         let request_id = Uuid::new_v4();
         let request = RequestMessage {
             id: request_id,
@@ -116,7 +112,7 @@ mod test {
             error: None
         };
 
-        let mut future = client.call(request);
+        let future = client.call(request);
 
         let request_2_id = Uuid::new_v4();
 
@@ -132,7 +128,7 @@ mod test {
             error: None
         };
 
-        let mut future_2 = client.call(request_2);
+        let future_2 = client.call(request_2);
 
         client.handle_response(response_2.clone());
         client.handle_response(response.clone());

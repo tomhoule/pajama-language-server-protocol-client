@@ -27,10 +27,8 @@ use std::process::{Command, Stdio};
 use std::io;
 use tokio_core::reactor::{Core, PollEvented};
 use tokio_core::io::{Io, Framed};
-use messages::{RequestMessage, ResponseMessage};
 use language_server_io::LanguageServerIo;
 use services::{NotificationServer, RpcClient};
-use uuid::Uuid;
 
 pub struct LanguageServer {
     client: RpcClient,
@@ -50,7 +48,7 @@ impl LanguageServer {
             .spawn()?;
         let core = Core::new()?;
         let interface = PollEvented::new(LanguageServerIo::new(child), &core.handle())?.framed(RpcCodec);
-        let client = RpcClient::new(core.handle());
+        let client = RpcClient::new();
         let notification_server = NotificationServer {};
         Ok(LanguageServer { core, client, notification_server, interface })
     }
