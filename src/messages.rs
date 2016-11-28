@@ -56,7 +56,7 @@ pub struct ResponseMessage {
     pub error: Option<String>,
 }
 
-#[derive(Debug, Deserialize, PartialEq, Serialize)]
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct Notification {
     pub method: String,
     pub params: String,

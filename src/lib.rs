@@ -1,5 +1,6 @@
 #![feature(proc_macro)]
 #![feature(field_init_shorthand)]
+#![feature(conservative_impl_trait)]
 
 #[macro_use] extern crate chomp;
 extern crate futures;
@@ -27,13 +28,15 @@ use std::process::{Command, Stdio};
 use error::Result as CustomResult;
 use tokio_core::reactor::Core;
 use language_server_io::{make_io_wrapper};
-use services::{RpcClient, RequestHandle};
+use services::{RpcClient};
 use worker::Worker;
 use uuid::Uuid;
-use messages::{Notification, RequestMessage};
+use messages::{Notification, RequestMessage, ResponseMessage};
 use futures::sync::mpsc;
 use tokio_service::Service;
 use futures::stream::Stream;
+use error::Error;
+use futures::Future;
 
 
 pub struct LanguageServer {
@@ -62,7 +65,7 @@ impl LanguageServer {
         Ok(LanguageServer { client, notifications: Box::new(notifications_receiver) })
     }
 
-    pub fn initialize(&self) -> RequestHandle {
+    pub fn initialize(&self) -> Box<Future<Item=ResponseMessage, Error=Error>> {
         self.client.call(RequestMessage {
             id: Uuid::new_v4(),
             method: "initialize".to_string(),

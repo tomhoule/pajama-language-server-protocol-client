@@ -1,4 +1,4 @@
-use futures::{Async, Future, Poll, Sink};
+use futures::{Async, AsyncSink, Future, Poll, Sink};
 use futures::stream::{Peekable, Stream, SplitSink};
 use futures::sync::mpsc;
 use tokio_service::Service;
@@ -8,10 +8,14 @@ use uuid::Uuid;
 use std::cell::RefCell;
 use std::rc::Rc;
 use language_server_io::IoWrapper;
+use futures::future::{AndThen};
 
-pub struct RequestHandle {
+struct RequestHandle {
     id: Uuid,
+    request: Option<RequestMessage>,
+    server_input: Rc<RefCell<SplitSink<IoWrapper>>>,
     receiver: Rc<RefCell<Peekable<mpsc::UnboundedReceiver<ResponseMessage>>>>,
+    write_status: Async<()>,
 }
 
 impl Future for RequestHandle {
@@ -19,19 +23,44 @@ impl Future for RequestHandle {
     type Error = Error;
 
     fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
-        let mut receiver = self.receiver.borrow_mut();
-        {
-            match receiver.peek() {
-                Ok(Async::Ready(Some(response))) => {
-                    if response.id != self.id {
-                        return Ok(Async::NotReady)
-                    }
+
+        if let Some(request) = self.request.take() {
+            let rick_roll = request.method == "test_method";
+            let mut server_input = self.server_input.borrow_mut();
+            match server_input.start_send(request)? {
+                AsyncSink::Ready => {
+                    self.write_status = server_input.poll_complete()?;
                 },
-                response => {
+                AsyncSink::NotReady(request) => {
+                    self.request = Some(request);
                     return Ok(Async::NotReady)
                 }
             }
         }
+
+        match self.write_status {
+            Async::NotReady => {
+                self.write_status = self.server_input.borrow_mut().poll_complete()?;
+                if let Async::Ready(()) = self.write_status {
+                    ()
+                } else {
+                    return Ok(Async::NotReady)
+                }
+            },
+            Async::Ready(()) => ()
+        }
+
+        let mut receiver = self.receiver.borrow_mut();
+
+        match receiver.peek() {
+            Ok(Async::Ready(Some(response))) => {
+                if response.id != self.id {
+                    return Ok(Async::NotReady)
+                }
+            },
+            _ => return Ok(Async::NotReady)
+        }
+
         match receiver.poll() {
             Ok(Async::Ready(Some(response))) => {
                 Ok(Async::Ready(response))
@@ -42,14 +71,14 @@ impl Future for RequestHandle {
 }
 
 pub struct RpcClient {
-    server_input: SplitSink<IoWrapper>,
+    server_input: Rc<RefCell<SplitSink<IoWrapper>>>,
     responses: Rc<RefCell<Peekable<mpsc::UnboundedReceiver<ResponseMessage>>>>,
 }
 
 impl RpcClient {
     pub fn new(server_input: SplitSink<IoWrapper>, receiver: mpsc::UnboundedReceiver<ResponseMessage>) -> RpcClient {
         RpcClient {
-            server_input,
+            server_input: Rc::new(RefCell::new(server_input)),
             responses: Rc::new(RefCell::new(receiver.peekable())),
         }
     }
@@ -59,15 +88,19 @@ impl Service for RpcClient {
     type Request = RequestMessage;
     type Response = ResponseMessage;
     type Error = Error;
-    type Future = RequestHandle;
+    type Future = Box<Future<Item=Self::Response, Error=Self::Error>>;
 
     fn call(&self, request: Self::Request) -> Self::Future {
-        // self.server_input.start_send(request).unwrap();
-        // self.server_input.poll_complete().unwrap();
-        RequestHandle {
-            id: request.id.clone(),
-            receiver: self.responses.clone(),
-        }
+        let request_id = request.id.clone();
+        Box::new(
+            RequestHandle {
+                id: request_id,
+                request: Some(request),
+                server_input: self.server_input.clone(),
+                receiver: self.responses.clone(),
+                write_status: Async::NotReady,
+            }
+        )
     }
 }
 
@@ -80,16 +113,17 @@ mod test {
     use futures::{Future, Sink};
     use futures::sync::mpsc;
     use futures::stream::{iter, Stream};
-    use tokio_core::reactor::Core;
+    use tokio_core::reactor::{Core};
     use language_server_io::make_io_wrapper;
     use std::process::{Command, Stdio};
+    use std::time::Duration;
 
     #[test]
     fn rpc_client_can_be_called() {
         let core = Core::new().unwrap();
         let (_, receiver) = mpsc::unbounded();
-        let child = Command::new("/bin/echo")
-            .arg("testing")
+        let child = Command::new("/bin/sh")
+            .arg("hi")
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
@@ -102,15 +136,18 @@ mod test {
             method: "test_method".to_string(),
             params: "".to_string(),
         };
-        let mut future = (&client).call(request);
-        assert!(future.poll().unwrap().is_not_ready())
+        let mut future = client.call(request);
+        core.handle()
+            .spawn(future
+                   .map(|_| ())
+                   .map_err(|_| ()));
     }
 
     #[test]
     fn rpc_client_can_match_responses_to_requests() {
         let mut core = Core::new().unwrap();
         let (sender, receiver) = mpsc::unbounded();
-        let child = Command::new("/usr/bin/tee")
+        let child = Command::new("/bin/sh")
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
@@ -118,35 +155,31 @@ mod test {
             .unwrap();
         let (sink, _) = make_io_wrapper(child, core.handle()).unwrap().split();
         let client = RpcClient::new(sink, receiver);
+
         let request_id = Uuid::new_v4();
         let request = RequestMessage {
             id: request_id,
             method: "test_method".to_string(),
             params: "".to_string(),
         };
-
         let response = ResponseMessage {
             id: request_id,
             result: "never gonna give you up".to_string(),
             error: None
         };
-
         let future = client.call(request);
 
         let request_2_id = Uuid::new_v4();
-
         let request_2 = RequestMessage {
             id: request_2_id,
             method: "rickroll".to_string(),
             params: "".to_string(),
         };
-
         let response_2 = ResponseMessage {
             id: request_2_id,
             result: "never gonna let you down".to_string(),
             error: None
         };
-
         let future_2 = client.call(request_2);
 
         sender.send_all(iter(vec!(Ok(response_2.clone()), Ok(response.clone())))).wait().unwrap();
