@@ -1,8 +1,6 @@
 use futures::{Async, Future, Poll};
-use futures::stream::{Stream, SplitStream};
-use language_server_io::IoWrapper;
+use futures::stream::{Stream};
 use messages::{IncomingMessage, ResponseMessage, Notification};
-use error::Error;
 use futures::sync::mpsc;
 use serde_json::Value;
 use std::io;
@@ -13,7 +11,6 @@ pub struct Worker<T: Stream<Item=Value, Error=io::Error>> {
     notifications: mpsc::UnboundedSender<Notification>,
     responses_sink: mpsc::UnboundedSender<ResponseMessage>,
     server_output: T,
-    write_status: Async<()>,
 }
 
 impl<T: Stream<Item=Value, Error=io::Error>> Worker<T> {
@@ -24,7 +21,6 @@ impl<T: Stream<Item=Value, Error=io::Error>> Worker<T> {
     {
         Worker {
             notifications, responses_sink, server_output,
-            write_status: Async::Ready(()),
         }
     }
 }
@@ -45,12 +41,12 @@ impl<T: Stream<Item=Value, Error=io::Error>> Future for Worker<T> {
         if let Ok(Async::Ready(Some(message))) = self.server_output.poll() {
             match handle_raw_message(message).map_err(|_| ())? {
                 IncomingMessage::Response(response) => {
-                    self.responses_sink.start_send(response);
+                    self.responses_sink.start_send(response).unwrap();
                 },
                 IncomingMessage::Notification(notification) => {
-                    self.notifications.start_send(notification);
+                    self.notifications.start_send(notification).unwrap();
                 },
-                IncomingMessage::MultipleMessages(values) => panic!(),
+                IncomingMessage::MultipleMessages(_) => panic!(),
             }
         }
 
@@ -61,14 +57,10 @@ impl<T: Stream<Item=Value, Error=io::Error>> Future for Worker<T> {
 #[cfg(test)]
 mod test {
     use super::Worker;
-    use language_server_io::make_io_wrapper;
     use futures::sync::mpsc;
     use futures::stream::{Stream, iter};
-    use futures::{Async, Future};
     use tokio_core::reactor::{Core};
-    use std::process::{Command, Stdio};
-    use messages::{IncomingMessage, Notification, ResponseMessage};
-    use futures::sink::Sink;
+    use messages::{Notification, ResponseMessage};
     use uuid::Uuid;
     use serde_json::to_value;
 

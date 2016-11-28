@@ -2,13 +2,12 @@ use futures::{Async, AsyncSink, Future, Poll, Sink};
 use futures::stream::{Peekable, Stream, SplitSink};
 use futures::sync::mpsc;
 use tokio_service::Service;
-use messages::{Notification, RequestMessage, ResponseMessage};
+use messages::{RequestMessage, ResponseMessage};
 use error::{Error};
 use uuid::Uuid;
 use std::cell::RefCell;
 use std::rc::Rc;
 use language_server_io::IoWrapper;
-use futures::future::{AndThen};
 
 struct RequestHandle {
     id: Uuid,
@@ -25,7 +24,6 @@ impl Future for RequestHandle {
     fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
 
         if let Some(request) = self.request.take() {
-            let rick_roll = request.method == "test_method";
             let mut server_input = self.server_input.borrow_mut();
             match server_input.start_send(request)? {
                 AsyncSink::Ready => {
@@ -116,7 +114,6 @@ mod test {
     use tokio_core::reactor::{Core};
     use language_server_io::make_io_wrapper;
     use std::process::{Command, Stdio};
-    use std::time::Duration;
 
     #[test]
     fn rpc_client_can_be_called() {
@@ -136,7 +133,7 @@ mod test {
             method: "test_method".to_string(),
             params: "".to_string(),
         };
-        let mut future = client.call(request);
+        let future = client.call(request);
         core.handle()
             .spawn(future
                    .map(|_| ())
