@@ -36,7 +36,7 @@ fn consume_whitespace<'a, I:U8Input<Buffer=&'a[u8], Token=u8>, T>(i: I, t: T) ->
 
 fn headers<'a, I: U8Input<Buffer=&'a [u8], Token=u8>>(i: I) -> SimpleResult<I, Headers> {
     many1(i, header)
-        .bind(|i, headers| consume_whitespace(i, headers))
+        .bind(consume_whitespace)
         .bind(|i, headers: Vec<HeaderType>| {
             i.ret(headers.into_iter().collect::<Headers>())
         })

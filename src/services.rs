@@ -9,7 +9,7 @@ use std::cell::RefCell;
 use std::rc::Rc;
 use language_server_io::IoWrapper;
 
-struct RequestHandle {
+pub struct RequestHandle {
     id: Uuid,
     request: Option<RequestMessage>,
     server_input: Rc<RefCell<SplitSink<IoWrapper>>>,
@@ -86,19 +86,17 @@ impl Service for RpcClient {
     type Request = RequestMessage;
     type Response = ResponseMessage;
     type Error = Error;
-    type Future = Box<Future<Item=Self::Response, Error=Self::Error>>;
+    type Future = RequestHandle;
 
     fn call(&self, request: Self::Request) -> Self::Future {
-        let request_id = request.id.clone();
-        Box::new(
-            RequestHandle {
-                id: request_id,
-                request: Some(request),
-                server_input: self.server_input.clone(),
-                receiver: self.responses.clone(),
-                write_status: Async::NotReady,
-            }
-        )
+        let request_id = request.id;
+        RequestHandle {
+            id: request_id,
+            request: Some(request),
+            server_input: self.server_input.clone(),
+            receiver: self.responses.clone(),
+            write_status: Async::NotReady,
+        }
     }
 }
 
@@ -114,6 +112,7 @@ mod test {
     use tokio_core::reactor::{Core};
     use language_server_io::make_io_wrapper;
     use std::process::{Command, Stdio};
+    use serde_json as json;
 
     #[test]
     fn rpc_client_can_be_called() {
@@ -131,7 +130,7 @@ mod test {
         let request = RequestMessage {
             id: Uuid::new_v4(),
             method: "test_method".to_string(),
-            params: "".to_string(),
+            params: json::to_value(""),
         };
         let future = client.call(request);
         core.handle()
@@ -157,7 +156,7 @@ mod test {
         let request = RequestMessage {
             id: request_id,
             method: "test_method".to_string(),
-            params: "".to_string(),
+            params: json::to_value(""),
         };
         let response = ResponseMessage {
             id: request_id,
@@ -170,7 +169,7 @@ mod test {
         let request_2 = RequestMessage {
             id: request_2_id,
             method: "rickroll".to_string(),
-            params: "".to_string(),
+            params: json::to_value(""),
         };
         let response_2 = ResponseMessage {
             id: request_2_id,

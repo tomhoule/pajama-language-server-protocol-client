@@ -6,6 +6,8 @@ authors = ["Tom Houlé <tom@tomhoule.com>"]
 [dependencies]
 chomp = "*"
 futures = "*"
+libc = "*"
+log = "*"
 mio = "*"
 serde = "*"
 serde_derive = "*"
@@ -13,3 +15,6 @@ serde_json = "*"
 tokio-core = { git = "https://github.com/tokio-rs/tokio-core" }
 tokio-service = { git = "https://github.com/tokio-rs/tokio-service" }
 uuid = { version = "*", features = ["serde", "v4"] }
+
+[dev-dependencies]
+env_logger = { version = "*", default-features = false }

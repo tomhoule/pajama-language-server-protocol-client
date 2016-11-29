@@ -5,7 +5,7 @@ use std::iter::{IntoIterator};
 use error::Error;
 
 fn handle_object(json_object: Map<String, Value>) -> Result<IncomingMessage, Error> {
-    if let Some(_) = json_object.get("id") {
+    if json_object.get("id").is_some() {
         let deserialized_response = from_value::<messages::ResponseMessage>(Value::Object(json_object.clone()))?;
         Ok(IncomingMessage::Response(deserialized_response))
     } else {
@@ -17,7 +17,7 @@ fn handle_object(json_object: Map<String, Value>) -> Result<IncomingMessage, Err
 pub fn handle_raw_message(raw_message: Value) -> Result<IncomingMessage, Error> {
     match raw_message {
         Value::Object(message) => handle_object(message),
-        Value::Array(messages) => messages.into_iter().map(|m| handle_raw_message(m)).collect(),
+        Value::Array(messages) => messages.into_iter().map(handle_raw_message).collect(),
         _ => Err(Error::OOL)
     }
 }

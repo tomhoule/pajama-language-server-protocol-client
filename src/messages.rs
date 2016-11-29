@@ -30,12 +30,6 @@ impl FromIterator<IncomingMessage> for IncomingMessage {
 }
 
 #[derive(Debug, Deserialize, Serialize)]
-pub enum Message {
-    Incoming,
-    Request(RequestMessage),
-}
-
-#[derive(Debug, Deserialize, Serialize)]
 pub struct RpcError {
     pub code: i32,
     pub message: String,
@@ -46,7 +40,7 @@ pub struct RpcError {
 pub struct RequestMessage {
     pub id: Uuid,
     pub method: String,
-    pub params: String,
+    pub params: json::Value,
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]

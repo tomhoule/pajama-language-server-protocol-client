@@ -4,6 +4,8 @@
 
 #[macro_use] extern crate chomp;
 extern crate futures;
+extern crate libc;
+#[macro_use] extern crate log;
 extern crate mio;
 extern crate serde;
 #[macro_use] extern crate serde_derive;
@@ -31,16 +33,18 @@ use language_server_io::{make_io_wrapper};
 use services::{RpcClient};
 use worker::Worker;
 use uuid::Uuid;
-use messages::{Notification, RequestMessage, ResponseMessage};
+use messages::{Notification, RequestMessage};
 use futures::sync::mpsc;
 use tokio_service::Service;
 use futures::stream::Stream;
-use error::Error;
-use futures::Future;
-
+use serde_json as json;
+use serde_json::builder::{ObjectBuilder};
+use std::env;
+use services::RequestHandle;
 
 pub struct LanguageServer {
     client: RpcClient,
+    pub core: Core,
     pub notifications: Box<Stream<Item=Notification, Error=()>>,
 }
 
@@ -54,22 +58,34 @@ impl LanguageServer {
             .stderr(Stdio::piped())
             .spawn()?;
         let core = Core::new()?;
+
         let (responses_sender, responses_receiver) = mpsc::unbounded();
         let (notifications_sender, notifications_receiver) = mpsc::unbounded();
         let (sink, stream) = make_io_wrapper(child, core.handle())?.split();
-        let client = RpcClient::new(sink, responses_receiver);
 
+        let client = RpcClient::new(sink, responses_receiver);
         let worker = Worker::new(notifications_sender, responses_sender, stream);
         core.handle().spawn(worker);
 
-        Ok(LanguageServer { client, notifications: Box::new(notifications_receiver) })
+        debug!("Server start up");
+
+        Ok(LanguageServer { client, core, notifications: Box::new(notifications_receiver) })
     }
 
-    pub fn initialize(&self) -> Box<Future<Item=ResponseMessage, Error=Error>> {
-        self.client.call(RequestMessage {
-            id: Uuid::new_v4(),
-            method: "initialize".to_string(),
-            params: String::new(),
-        })
+    pub fn initialize(&self) -> RequestHandle {
+        unsafe {
+            let pid = libc::getpid();
+            let cwd = env::current_dir().unwrap();
+            self.client.call(RequestMessage {
+                id: Uuid::new_v4(),
+                method: "initialize".to_string(),
+                params: json::to_value(
+                    ObjectBuilder::new()
+                        .insert("processId", pid)
+                        .insert("rootPath", cwd)
+                        .insert_object("clientCapabilities", |builder| builder)
+                        .build())
+            })
+        }
     }
 }
