@@ -5,6 +5,7 @@ use message_parser::parse_message;
 use messages::RequestMessage;
 use std::io::Write;
 
+/// Don't cross the polleventeds!!!!
 pub struct RpcCodec;
 
 impl Codec for RpcCodec {
@@ -12,6 +13,7 @@ impl Codec for RpcCodec {
     type Out = RequestMessage;
 
     fn decode(&mut self, buf: &mut EasyBuf) -> Result<Option<Self::In>, io::Error> {
+        debug!("decode - polling {:?}", buf.as_slice());
         let json = parse_message(buf.as_slice());
         match json {
             Ok(inner) => {
@@ -29,6 +31,8 @@ impl Codec for RpcCodec {
         buf.write(format!("Content-Length: {}\r\n\r\n", payload.len()).as_bytes())?;
         debug!("Writing: {}", payload);
         buf.write(payload.as_bytes())?;
+        debug!("Furiously writing newlines");
+        buf.write("\n\n\r\n\r\n".as_bytes())?;
         Ok(())
     }
 }

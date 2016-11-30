@@ -4,32 +4,36 @@ use messages::{IncomingMessage, ResponseMessage, Notification};
 use futures::sync::mpsc;
 use serde_json::Value;
 use std::io;
+use std::io::{Read, Write};
 use dispatcher::handle_raw_message;
 use futures::sink::Sink;
+use language_server_io::LanguageServerIo;
+use tokio_core::io::Io;
 
-pub struct Worker<T: Stream<Item=Value, Error=io::Error>> {
+pub struct Worker {
+    lsio: LanguageServerIo,
     notifications: mpsc::UnboundedSender<Notification>,
     responses_sink: mpsc::UnboundedSender<ResponseMessage>,
-    server_output: T,
 }
 
-impl<T: Stream<Item=Value, Error=io::Error>> Worker<T> {
+impl Worker {
     pub fn new(
+        lsio: LanguageServerIo,
         notifications: mpsc::UnboundedSender<Notification>,
-        responses_sink: mpsc::UnboundedSender<ResponseMessage>,
-        server_output: T) -> Self
+        responses_sink: mpsc::UnboundedSender<ResponseMessage>) -> Self
     {
         Worker {
-            notifications, responses_sink, server_output,
+            notifications, responses_sink, lsio,
         }
     }
 }
 
-impl<T: Stream<Item=Value, Error=io::Error>> Future for Worker<T> {
+impl Future for Worker {
     type Item = ();
     type Error = ();
 
     fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
+        debug!("worker - polling for writes on sinks");
         if let Async::NotReady = self.responses_sink.poll_complete().map_err(|_| ())? {
             return Ok(Async::NotReady)
         }
@@ -38,7 +42,14 @@ impl<T: Stream<Item=Value, Error=io::Error>> Future for Worker<T> {
             return Ok(Async::NotReady)
         }
 
-        if let Ok(Async::Ready(Some(message))) = self.server_output.poll() {
+        debug!("worker - polling for reads on process stdout");
+        let mut stream = self.lsio.borrow_mut();
+        let mut buf = Vec::<u8>::new();
+        debug!("polled: {:?}", stream.get_mut().read(&mut buf));
+        debug!("read {:?}", buf);
+
+        if let Ok(Async::Ready(Some(message))) = stream.poll() {
+            debug!("worker - read {:?}", message);
             match handle_raw_message(message).map_err(|_| ())? {
                 IncomingMessage::Response(response) => {
                     self.responses_sink.start_send(response).unwrap();

@@ -28,8 +28,10 @@ pub use language::Language;
 
 use std::process::{Command, Stdio};
 use error::Result as CustomResult;
-use tokio_core::reactor::Core;
-use language_server_io::{make_io_wrapper};
+use tokio_core::reactor::{Core, PollEvented};
+use std::os::unix::io::AsRawFd;
+use language_server_io::AsyncChildIo;
+use mio::unix::EventedFd;
 use services::{RpcClient};
 use worker::Worker;
 use uuid::Uuid;
@@ -41,6 +43,8 @@ use serde_json as json;
 use serde_json::builder::{ObjectBuilder};
 use std::env;
 use services::RequestHandle;
+use std::rc::Rc;
+use std::cell::RefCell;
 
 pub struct LanguageServer {
     client: RpcClient,
@@ -50,24 +54,33 @@ pub struct LanguageServer {
 
 impl LanguageServer {
     pub fn new<L: Language>(lang: L) -> CustomResult<Self> {
+        let core = Core::new()?;
+        let handle = core.handle();
+
         let args = lang.get_command();
-        let child = Command::new(&args[0])
+        let mut child = Command::new(&args[0])
             .args(&args[1..])
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
             .spawn()?;
-        let core = Core::new()?;
+
+        let stdin = child.stdin.unwrap();
+        let stdin_fd = stdin.as_raw_fd();
+        let stdout = child.stdout.unwrap();
+        let stdout_fd = stdout.as_raw_fd();
+        PollEvented::new(EventedFd(&stdin_fd), &handle)?;
+        PollEvented::new(EventedFd(&stdout_fd), &handle)?;
+        let lsio = AsyncChildIo::new(stdin, stdout).into_lsio();
 
         let (responses_sender, responses_receiver) = mpsc::unbounded();
-        let (notifications_sender, notifications_receiver) = mpsc::unbounded();
-        let (sink, stream) = make_io_wrapper(child, core.handle())?.split();
+        let (notifications_queue, notifications_receiver) = mpsc::unbounded();
 
-        let client = RpcClient::new(sink, responses_receiver);
-        let worker = Worker::new(notifications_sender, responses_sender, stream);
+        let client = RpcClient::new(lsio.clone(), responses_receiver);
+        let worker = Worker::new(lsio, notifications_queue, responses_sender);
+
         core.handle().spawn(worker);
 
-        debug!("Server start up");
+        debug!("server start up");
 
         Ok(LanguageServer { client, core, notifications: Box::new(notifications_receiver) })
     }

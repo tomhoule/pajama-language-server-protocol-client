@@ -11,7 +11,7 @@ struct Typescript;
 
 impl Language for Typescript {
     fn get_command(&self) -> Vec<String> {
-        vec!("sh".to_string(), "-c".to_string(), "tsserver".to_string())
+        vec!("ping".to_string(), "localhost".to_string())
     }
 }
 
@@ -26,10 +26,5 @@ fn typescript_language_server_can_initialize() {
     drop(env_logger::init());
     let mut server = LanguageServer::new(Typescript).unwrap();
     let response = server.initialize();
-    server.core.handle().spawn(response.then(|_| {
-        Err(())
-    }));
-    loop {
-        server.core.turn(None)
-    }
+    assert!(server.core.run(response).is_ok());
 }

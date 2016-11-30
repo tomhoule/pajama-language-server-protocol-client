@@ -1,5 +1,5 @@
 use futures::{Async, AsyncSink, Future, Poll, Sink};
-use futures::stream::{Peekable, Stream, SplitSink};
+use futures::stream::{Peekable, Stream};
 use futures::sync::mpsc;
 use tokio_service::Service;
 use messages::{RequestMessage, ResponseMessage};
@@ -7,12 +7,12 @@ use error::{Error};
 use uuid::Uuid;
 use std::cell::RefCell;
 use std::rc::Rc;
-use language_server_io::IoWrapper;
+use language_server_io::LanguageServerIo;
 
 pub struct RequestHandle {
     id: Uuid,
     request: Option<RequestMessage>,
-    server_input: Rc<RefCell<SplitSink<IoWrapper>>>,
+    server_input: LanguageServerIo,
     receiver: Rc<RefCell<Peekable<mpsc::UnboundedReceiver<ResponseMessage>>>>,
     write_status: Async<()>,
 }
@@ -48,8 +48,10 @@ impl Future for RequestHandle {
             Async::Ready(()) => ()
         }
 
+        debug!("request handle - completed write, {:?}", self.write_status);
         let mut receiver = self.receiver.borrow_mut();
 
+        debug!("request handle - waiting for response");
         match receiver.peek() {
             Ok(Async::Ready(Some(response))) => {
                 if response.id != self.id {
@@ -69,14 +71,14 @@ impl Future for RequestHandle {
 }
 
 pub struct RpcClient {
-    server_input: Rc<RefCell<SplitSink<IoWrapper>>>,
+    server_input: LanguageServerIo,
     responses: Rc<RefCell<Peekable<mpsc::UnboundedReceiver<ResponseMessage>>>>,
 }
 
 impl RpcClient {
-    pub fn new(server_input: SplitSink<IoWrapper>, receiver: mpsc::UnboundedReceiver<ResponseMessage>) -> RpcClient {
+    pub fn new(server_input: LanguageServerIo, receiver: mpsc::UnboundedReceiver<ResponseMessage>) -> RpcClient {
         RpcClient {
-            server_input: Rc::new(RefCell::new(server_input)),
+            server_input: server_input,
             responses: Rc::new(RefCell::new(receiver.peekable())),
         }
     }
