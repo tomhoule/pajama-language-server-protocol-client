@@ -116,13 +116,17 @@ impl io::Read for AsyncChildIo {
     fn read(&mut self, buf: &mut [u8]) -> StdResult<usize, io::Error> {
         // We need to signal the event loop that we have read, so it will only return read when
         // stdout is actually ready. See the docs for PollEvented.
-        if (self.read_child) {
+        if self.read_child {
             self.stdout.need_read();
+            self.read_child = false;
         }
 
         if self.poll_read().is_ready() {
-            self.read_child = true;
-            self.stdout.read(buf)
+            let ret = self.stdout.read(buf)?;
+            if ret < buf.len() {
+                self.read_child = true;
+            }
+            Ok(ret)
         } else {
             debug!("reading from stdout - not ready");
             Err(mio::would_block())
@@ -192,22 +196,24 @@ mod test {
         type Error = ();
 
         fn poll(&mut self) -> Poll<Option<()>, ()> {
-            if self.count > 100 {
+            if self.count > 1000 {
                 debug!("read stream completed ({:?})", self.data);
                 return Ok(Async::Ready(None))
             }
 
-            if let Async::Ready(()) = self.inner.poll_read() {
-                let read_size = self.inner.read(&mut self.data).unwrap();
-                debug!("read - read {:?} bytes", read_size);
-                if read_size < self.data.len() {
-                    return Ok(Async::Ready(None))
+            match self.inner.read(&mut self.data) {
+                Ok(read_size) => {
+                    debug!("could read {:?} bytes", read_size);
+                    self.count += 1;
+                    if read_size < self.data.len() {
+                        Ok(Async::Ready(None))
+                    } else {
+                        Ok(Async::Ready(Some(())))
+                    }
+                },
+                Err(_) => {
+                    Ok(Async::NotReady)
                 }
-                self.count += 1;
-                return Ok(Async::Ready(Some(())));
-            } else {
-                debug!("read - stdout not ready");
-                Ok(Async::NotReady)
             }
         }
     }
@@ -245,7 +251,7 @@ mod test {
 
     }
 
-    // #[test]
+    #[test]
     fn async_child_io_does_not_hang() {
         drop(env_logger::init());
         let child = Command::new("cat")
@@ -286,8 +292,15 @@ mod test {
 
         fn decode(&mut self, buf: &mut EasyBuf) -> StdResult<Option<Self::In>, io::Error> {
             use std::str;
-            debug!("received a lowercase string");
-            Ok(Some(str::from_utf8(buf.as_slice()).unwrap().to_string().to_uppercase()))
+            debug!("received a lowercase string {:?}", str::from_utf8(buf.as_slice()).unwrap());
+            let newline: Option<usize> = {
+                buf.as_slice().iter().enumerate().find(|item| *item.1 == b'\n').map(|(index, _)| index)
+            };
+            if let Some(index) = newline {
+                Ok(Some(str::from_utf8(&buf.drain_to(index + 1).as_slice()[..index]).unwrap().to_string().to_uppercase()))
+            } else {
+                Ok(None)
+            }
         }
 
         fn encode(&mut self, msg: Self::Out, buf: &mut Vec<u8>) -> StdResult<(), io::Error> {
@@ -308,21 +321,27 @@ mod test {
         let mut core = Core::new().unwrap();
         let (mut sink, mut stream) = AsyncChildIo::new(child, &core.handle()).unwrap().framed(UpcaseCodec).split();
 
-        let lowercase: Vec<Result<String>> = vec!["abc", "def", "ghi", "jkl"].into_iter().map(|s| Ok(s.to_string().to_uppercase())).collect();
+        let lowercase: Vec<Result<String>> = vec!["abc\n", "def\n", "ghi\n", "jkl\n"].into_iter().map(|s| Ok(s.to_string().to_uppercase())).collect();
         let input_stream = iter(lowercase);
 
         let mut result_vec = RefCell::new(Vec::<String>::new());
 
-        let fut = input_stream.forward(sink).then(|_| stream.take(1).for_each(|s| {
-            result_vec.borrow_mut().push(s);
+        let fut = stream.take(4).for_each(|s| {
+            if s.len() > 0 {
+                result_vec.borrow_mut().push(s);
+            }
             Ok(())
-        }));
+        });
 
         let handle = core.handle();
 
+        handle.spawn(input_stream.forward(sink)
+                     .map(|_| ())
+                     .map_err(|_| ()));
+
         core.run(fut).unwrap();
 
-        assert_eq!(result_vec.borrow_mut().as_slice(), ["ABCDEFGHIJKL"]);
+        assert_eq!(result_vec.borrow_mut().as_slice(), ["ABC", "DEF", "GHI", "JKL"]);
     }
 
 }
