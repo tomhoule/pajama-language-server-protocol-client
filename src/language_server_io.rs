@@ -323,7 +323,7 @@ mod test {
 
         let lowercase: Vec<Result<String>> = vec!["abc\n", "def\n", "ghi\n", "jkl\n"]
             .into_iter()
-            .map(|s| Ok(s.to_string().to_uppercase()))
+            .map(|s| Ok(s.to_string()))
             .collect();
         let input_stream = iter(lowercase);
 
