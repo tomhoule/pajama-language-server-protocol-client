@@ -28,10 +28,8 @@ pub use language::Language;
 
 use std::process::{Command, Stdio};
 use error::Result as CustomResult;
-use tokio_core::reactor::{Core, PollEvented};
-use std::os::unix::io::AsRawFd;
+use tokio_core::reactor::Core;
 use language_server_io::AsyncChildIo;
-use mio::unix::EventedFd;
 use services::{RpcClient};
 use worker::Worker;
 use uuid::Uuid;
@@ -58,28 +56,18 @@ impl LanguageServer {
         let handle = core.handle();
 
         let args = lang.get_command();
-        let mut child = Command::new(&args[0])
+        let child = Command::new(&args[0])
             .args(&args[1..])
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .spawn()?;
 
-        let stdin = child.stdin.unwrap();
-        let stdin_fd = stdin.as_raw_fd();
-        let stdout = child.stdout.unwrap();
-        let stdout_fd = stdout.as_raw_fd();
-        PollEvented::new(EventedFd(&stdin_fd), &handle)?;
-        PollEvented::new(EventedFd(&stdout_fd), &handle)?;
-        let lsio = AsyncChildIo::new(stdin, stdout).into_lsio();
+        let lsio = AsyncChildIo::new(child, &handle)?.into_lsio();
 
         let (responses_sender, responses_receiver) = mpsc::unbounded();
         let (notifications_queue, notifications_receiver) = mpsc::unbounded();
 
         let client = RpcClient::new(lsio.clone(), responses_receiver);
-        let worker = Worker::new(lsio, notifications_queue, responses_sender);
-
-        core.handle().spawn(worker);
-
         debug!("server start up");
 
         Ok(LanguageServer { client, core, notifications: Box::new(notifications_receiver) })
