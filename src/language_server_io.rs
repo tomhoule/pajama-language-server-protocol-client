@@ -81,6 +81,7 @@ impl mio::Evented for Stdout {
 pub struct AsyncChildIo {
     stdin: PollEvented<Stdin>,
     stdout: PollEvented<Stdout>,
+    read_child: bool,
 }
 
 impl AsyncChildIo {
@@ -92,6 +93,7 @@ impl AsyncChildIo {
         Ok(AsyncChildIo {
             stdin,
             stdout,
+            read_child: false,
         })
     }
 
@@ -112,7 +114,19 @@ impl Io for AsyncChildIo {
 
 impl io::Read for AsyncChildIo {
     fn read(&mut self, buf: &mut [u8]) -> StdResult<usize, io::Error> {
-        self.stdout.read(buf)
+        // We need to signal the event loop that we have read, so it will only return read when
+        // stdout is actually ready. See the docs for PollEvented.
+        if (self.read_child) {
+            self.stdout.need_read();
+        }
+
+        if self.poll_read().is_ready() {
+            self.read_child = true;
+            self.stdout.read(buf)
+        } else {
+            debug!("reading from stdout - not ready");
+            Err(mio::would_block())
+        }
     }
 }
 
@@ -292,23 +306,23 @@ mod test {
             .unwrap();
 
         let mut core = Core::new().unwrap();
-        let (sink, stream) = AsyncChildIo::new(child, &core.handle()).unwrap().framed(UpcaseCodec).split();
+        let (mut sink, mut stream) = AsyncChildIo::new(child, &core.handle()).unwrap().framed(UpcaseCodec).split();
 
         let lowercase: Vec<Result<String>> = vec!["abc", "def", "ghi", "jkl"].into_iter().map(|s| Ok(s.to_string().to_uppercase())).collect();
         let input_stream = iter(lowercase);
 
-        let mut result_vec = RefCell::new(Vec::new());
+        let mut result_vec = RefCell::new(Vec::<String>::new());
 
-        let output_handler = stream.for_each(|s| {
-            debug!("framed - read {:?}", s);
-            Ok(result_vec.borrow_mut().push(s))
-        });
+        let fut = input_stream.forward(sink).then(|_| stream.take(1).for_each(|s| {
+            result_vec.borrow_mut().push(s);
+            Ok(())
+        }));
 
-        let fut = input_stream.forward(sink).then(|_| output_handler);
+        let handle = core.handle();
 
         core.run(fut).unwrap();
 
-        assert_eq!(result_vec.borrow_mut().as_slice(), ["ABC", "DEF", "GHI", "JKL"]);
+        assert_eq!(result_vec.borrow_mut().as_slice(), ["ABCDEFGHIJKL"]);
     }
 
 }
