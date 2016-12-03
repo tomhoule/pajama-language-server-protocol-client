@@ -1,9 +1,9 @@
 use crossbeam::sync::MsQueue;
 use futures::{Async, AsyncSink, Future, Poll, Sink};
-use futures::stream::{SplitSink};
+use futures::stream::SplitSink;
 use tokio_service::Service;
 use messages::{RequestMessage, ResponseMessage};
-use error::{Error};
+use error::Error;
 use uuid::Uuid;
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -33,14 +33,14 @@ impl Future for RequestHandle {
                 AsyncSink::Ready => (),
                 AsyncSink::NotReady(req) => {
                     self.request = Some(req);
-                    return Ok(Async::NotReady)
+                    return Ok(Async::NotReady);
                 }
             }
         }
 
         match server_input.poll_complete()? {
             Async::Ready(()) => (),
-            Async::NotReady => return Ok(Async::NotReady)
+            Async::NotReady => return Ok(Async::NotReady),
         }
 
         let mut current_response = self.current_response.borrow_mut();
@@ -53,8 +53,8 @@ impl Future for RequestHandle {
                         *current_response = Some(next);
                         Ok(Async::NotReady)
                     }
-                },
-                None => return Ok(Async::NotReady)
+                }
+                None => return Ok(Async::NotReady),
             }
         } else {
             let response = current_response.take().unwrap();
@@ -74,7 +74,9 @@ pub struct RpcClient {
 }
 
 impl RpcClient {
-    pub fn new(server_input: SplitSink<Framed<AsyncChildIo, RpcCodec>>, responses: Responses) -> RpcClient {
+    pub fn new(server_input: SplitSink<Framed<AsyncChildIo, RpcCodec>>,
+               responses: Responses)
+               -> RpcClient {
         RpcClient {
             server_input: Rc::new(RefCell::new(server_input)),
             responses: responses,
@@ -108,7 +110,7 @@ mod test {
     use tokio_service::Service;
     use futures::Future;
     use futures::stream::Stream;
-    use tokio_core::reactor::{Core};
+    use tokio_core::reactor::Core;
     use language_server_io::AsyncChildIo;
     use std::process::{Command, Stdio};
     use serde_json as json;
@@ -139,9 +141,8 @@ mod test {
         };
         let future = client.call(request);
         core.handle()
-            .spawn(future
-                   .map(|_| ())
-                   .map_err(|_| ()));
+            .spawn(future.map(|_| ())
+                .map_err(|_| ()));
     }
 
     #[test]
@@ -169,7 +170,7 @@ mod test {
         let response = ResponseMessage {
             id: request_id,
             result: "never gonna give you up".to_string(),
-            error: None
+            error: None,
         };
         let future = client.call(request);
 
@@ -182,7 +183,7 @@ mod test {
         let response_2 = ResponseMessage {
             id: request_2_id,
             result: "never gonna let you down".to_string(),
-            error: None
+            error: None,
         };
         let future_2 = client.call(request_2);
 

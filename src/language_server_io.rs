@@ -1,6 +1,6 @@
 use std::cell::RefCell;
 use mio::unix::EventedFd;
-use futures::{Async};
+use futures::Async;
 use tokio_core::io::Io;
 use tokio_core::reactor::{Handle, PollEvented};
 use std::process::{ChildStdout, ChildStdin};
@@ -36,7 +36,8 @@ impl mio::Evented for Stdin {
                 poll: &mio::Poll,
                 token: mio::Token,
                 interest: mio::Ready,
-                opts: mio::PollOpt) -> io::Result<()> {
+                opts: mio::PollOpt)
+                -> io::Result<()> {
         EventedFd(&self.0.as_raw_fd()).register(poll, token, interest, opts)
     }
 
@@ -44,7 +45,8 @@ impl mio::Evented for Stdin {
                   poll: &mio::Poll,
                   token: mio::Token,
                   interest: mio::Ready,
-                  opts: mio::PollOpt) -> io::Result<()> {
+                  opts: mio::PollOpt)
+                  -> io::Result<()> {
         EventedFd(&self.0.as_raw_fd()).reregister(poll, token, interest, opts)
     }
 
@@ -58,7 +60,8 @@ impl mio::Evented for Stdout {
                 poll: &mio::Poll,
                 token: mio::Token,
                 interest: mio::Ready,
-                opts: mio::PollOpt) -> io::Result<()> {
+                opts: mio::PollOpt)
+                -> io::Result<()> {
         EventedFd(&self.0.as_raw_fd()).register(poll, token, interest, opts)
     }
 
@@ -66,7 +69,8 @@ impl mio::Evented for Stdout {
                   poll: &mio::Poll,
                   token: mio::Token,
                   interest: mio::Ready,
-                  opts: mio::PollOpt) -> io::Result<()> {
+                  opts: mio::PollOpt)
+                  -> io::Result<()> {
         EventedFd(&self.0.as_raw_fd()).reregister(poll, token, interest, opts)
     }
 
@@ -89,8 +93,8 @@ impl AsyncChildIo {
         let raw_stdout = Stdout(child.stdout.unwrap());
         let stdout = PollEvented::new(raw_stdout, handle)?;
         Ok(AsyncChildIo {
-            stdin,
-            stdout,
+            stdin: stdin,
+            stdout: stdout,
             read_child: false,
         })
     }
@@ -163,7 +167,7 @@ mod test {
         fn poll(&mut self) -> Poll<Option<()>, ()> {
             if self.count > 100 {
                 debug!("write stream complete");
-                return Ok(Async::Ready(None))
+                return Ok(Async::Ready(None));
             }
             if let Async::Ready(()) = self.inner.poll_write() {
                 let written = self.inner.write("lorem ipsum\n\n".as_bytes()).unwrap();
@@ -189,7 +193,7 @@ mod test {
         fn poll(&mut self) -> Poll<Option<()>, ()> {
             if self.count > 1000 {
                 debug!("read stream completed ({:?})", self.data);
-                return Ok(Async::Ready(None))
+                return Ok(Async::Ready(None));
             }
 
             match self.inner.read(&mut self.data) {
@@ -201,10 +205,8 @@ mod test {
                     } else {
                         Ok(Async::Ready(Some(())))
                     }
-                },
-                Err(_) => {
-                    Ok(Async::NotReady)
                 }
+                Err(_) => Ok(Async::NotReady),
             }
         }
     }
@@ -267,9 +269,7 @@ mod test {
             inner: read,
         };
 
-        let rw = r.select(w).for_each(|_| {
-            Ok(())
-        });
+        let rw = r.select(w).for_each(|_| Ok(()));
 
         core.run(rw).unwrap();
         debug!("asio test returned");
@@ -283,12 +283,20 @@ mod test {
 
         fn decode(&mut self, buf: &mut EasyBuf) -> StdResult<Option<Self::In>, io::Error> {
             use std::str;
-            debug!("received a lowercase string {:?}", str::from_utf8(buf.as_slice()).unwrap());
+            debug!("received a lowercase string {:?}",
+                   str::from_utf8(buf.as_slice()).unwrap());
             let newline: Option<usize> = {
-                buf.as_slice().iter().enumerate().find(|item| *item.1 == b'\n').map(|(index, _)| index)
+                buf.as_slice()
+                    .iter()
+                    .enumerate()
+                    .find(|item| *item.1 == b'\n')
+                    .map(|(index, _)| index)
             };
             if let Some(index) = newline {
-                Ok(Some(str::from_utf8(&buf.drain_to(index + 1).as_slice()[..index]).unwrap().to_string().to_uppercase()))
+                Ok(Some(str::from_utf8(&buf.drain_to(index + 1).as_slice()[..index])
+                    .unwrap()
+                    .to_string()
+                    .to_uppercase()))
             } else {
                 Ok(None)
             }
@@ -310,9 +318,13 @@ mod test {
             .unwrap();
 
         let mut core = Core::new().unwrap();
-        let (sink, stream) = AsyncChildIo::new(child, &core.handle()).unwrap().framed(UpcaseCodec).split();
+        let (sink, stream) =
+            AsyncChildIo::new(child, &core.handle()).unwrap().framed(UpcaseCodec).split();
 
-        let lowercase: Vec<Result<String>> = vec!["abc\n", "def\n", "ghi\n", "jkl\n"].into_iter().map(|s| Ok(s.to_string().to_uppercase())).collect();
+        let lowercase: Vec<Result<String>> = vec!["abc\n", "def\n", "ghi\n", "jkl\n"]
+            .into_iter()
+            .map(|s| Ok(s.to_string().to_uppercase()))
+            .collect();
         let input_stream = iter(lowercase);
 
         let result_vec = RefCell::new(Vec::<String>::new());
@@ -327,12 +339,13 @@ mod test {
         let handle = core.handle();
 
         handle.spawn(input_stream.forward(sink)
-                     .map(|_| ())
-                     .map_err(|_| ()));
+            .map(|_| ())
+            .map_err(|_| ()));
 
         core.run(fut).unwrap();
 
-        assert_eq!(result_vec.borrow_mut().as_slice(), ["ABC", "DEF", "GHI", "JKL"]);
+        assert_eq!(result_vec.borrow_mut().as_slice(),
+                   ["ABC", "DEF", "GHI", "JKL"]);
     }
 
 }

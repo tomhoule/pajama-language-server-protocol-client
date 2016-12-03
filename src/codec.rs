@@ -22,20 +22,22 @@ impl Codec for RpcCodec {
                         let message = handle_raw_message(json_value)
                             .map_err(|err| io::Error::new(io::ErrorKind::Other, err))?;
                         Ok(Some(message))
-                    },
-                    Err(parse_error) => Err(io::Error::new(io::ErrorKind::InvalidData, parse_error)),
+                    }
+                    Err(parse_error) => {
+                        Err(io::Error::new(io::ErrorKind::InvalidData, parse_error))
+                    }
                 }
             }
-            Err(_) => Ok(None)
+            Err(_) => Ok(None),
         }
     }
 
     fn encode(&mut self, msg: Self::Out, buf: &mut Vec<u8>) -> Result<(), io::Error> {
-        let payload = json::to_string(&msg).map_err(|err| io::Error::new(io::ErrorKind::Other, err))?;
+        let payload =
+            json::to_string(&msg).map_err(|err| io::Error::new(io::ErrorKind::Other, err))?;
         buf.write(format!("Content-Length: {}\r\n\r\n", payload.len()).as_bytes())?;
         debug!("Writing: {}", payload);
         buf.write(payload.as_bytes())?;
         Ok(())
     }
 }
-

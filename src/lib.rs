@@ -2,14 +2,17 @@
 #![feature(field_init_shorthand)]
 #![feature(conservative_impl_trait)]
 
-#[macro_use] extern crate chomp;
+#[macro_use]
+extern crate chomp;
 extern crate crossbeam;
 extern crate futures;
 extern crate libc;
-#[macro_use] extern crate log;
+#[macro_use]
+extern crate log;
 extern crate mio;
 extern crate serde;
-#[macro_use] extern crate serde_derive;
+#[macro_use]
+extern crate serde_derive;
 extern crate serde_json;
 extern crate tokio_core;
 extern crate tokio_service;
@@ -30,13 +33,13 @@ use std::process::{Command, Stdio};
 use error::Result as CustomResult;
 use tokio_core::reactor::Core;
 use language_server_io::AsyncChildIo;
-use services::{RpcClient};
+use services::RpcClient;
 use uuid::Uuid;
 use messages::{Notification, RequestMessage, IncomingMessage};
 use tokio_service::Service;
 use futures::stream::Stream;
 use serde_json as json;
-use serde_json::builder::{ObjectBuilder};
+use serde_json::builder::ObjectBuilder;
 use std::env;
 use services::RequestHandle;
 use codec::RpcCodec;
@@ -57,8 +60,7 @@ impl LanguageServer {
         let handle = core.handle();
 
         let args = lang.get_command();
-        let child = Command::new(&args[0])
-            .args(&args[1..])
+        let child = Command::new(&args[0]).args(&args[1..])
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .spawn()?;
@@ -72,20 +74,19 @@ impl LanguageServer {
         let notifs = notifications.clone();
 
         let worker = stream.for_each(move |incoming_message| {
-            match incoming_message {
-                IncomingMessage::Response(message) => {
-                    responses.push(message);
-                    Ok(())
-                },
-                IncomingMessage::Notification(notification) => {
-                    notifs.push(notification);
-                    Ok(())
-                },
-                _ => {
-                    Ok(())
+                match incoming_message {
+                    IncomingMessage::Response(message) => {
+                        responses.push(message);
+                        Ok(())
+                    }
+                    IncomingMessage::Notification(notification) => {
+                        notifs.push(notification);
+                        Ok(())
+                    }
+                    _ => Ok(()),
                 }
-            }
-        }).map_err(|_| ());
+            })
+            .map_err(|_| ());
 
         core.handle().spawn(worker);
 
@@ -104,12 +105,11 @@ impl LanguageServer {
             self.client.call(RequestMessage {
                 id: Uuid::new_v4(),
                 method: "initialize".to_string(),
-                params: json::to_value(
-                    ObjectBuilder::new()
-                        .insert("processId", pid)
-                        .insert("rootPath", cwd)
-                        .insert_object("clientCapabilities", |builder| builder)
-                        .build())
+                params: json::to_value(ObjectBuilder::new()
+                    .insert("processId", pid)
+                    .insert("rootPath", cwd)
+                    .insert_object("clientCapabilities", |builder| builder)
+                    .build()),
             })
         }
     }

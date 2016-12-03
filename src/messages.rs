@@ -23,10 +23,10 @@ pub enum IncomingMessage {
 
 impl FromIterator<IncomingMessage> for IncomingMessage {
     fn from_iter<T>(iter: T) -> Self
-        where T: IntoIterator<Item=IncomingMessage>
-        {
-            IncomingMessage::MultipleMessages(Vec::from_iter(iter))
-        }
+        where T: IntoIterator<Item = IncomingMessage>
+    {
+        IncomingMessage::MultipleMessages(Vec::from_iter(iter))
+    }
 }
 
 #[derive(Debug, Deserialize, Serialize)]

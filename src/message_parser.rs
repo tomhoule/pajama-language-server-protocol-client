@@ -7,7 +7,7 @@ use std::iter::FromIterator;
 use std::str;
 use serde_json as json;
 
-fn header<'a, I: U8Input<Buffer=&'a [u8], Token=u8>>(i: I) -> SimpleResult<I, HeaderType> {
+fn header<'a, I: U8Input<Buffer = &'a [u8], Token = u8>>(i: I) -> SimpleResult<I, HeaderType> {
     parse!{i;
                    skip_while(is_whitespace);
         let name = take_while(|c| c != b':');
@@ -27,34 +27,38 @@ fn header<'a, I: U8Input<Buffer=&'a [u8], Token=u8>>(i: I) -> SimpleResult<I, He
     }
 }
 
-fn consume_whitespace<'a, I:U8Input<Buffer=&'a[u8], Token=u8>, T>(i: I, t: T) -> SimpleResult<I, T> {
+fn consume_whitespace<'a, I: U8Input<Buffer = &'a [u8], Token = u8>, T>(i: I,
+                                                                        t: T)
+                                                                        -> SimpleResult<I, T> {
     parse!{i;
             skip_whitespace();
         ret { t }
     }
 }
 
-fn headers<'a, I: U8Input<Buffer=&'a [u8], Token=u8>>(i: I) -> SimpleResult<I, Headers> {
+fn headers<'a, I: U8Input<Buffer = &'a [u8], Token = u8>>(i: I) -> SimpleResult<I, Headers> {
     many1(i, header)
         .bind(consume_whitespace)
-        .bind(|i, headers: Vec<HeaderType>| {
-            i.ret(headers.into_iter().collect::<Headers>())
-        })
+        .bind(|i, headers: Vec<HeaderType>| i.ret(headers.into_iter().collect::<Headers>()))
 }
 
-fn content<'a, I: U8Input<Token=u8, Buffer=&'a [u8]>>(i: I, size: usize) -> SimpleResult<I, &'a[u8]> {
+fn content<'a, I: U8Input<Token = u8, Buffer = &'a [u8]>>(i: I,
+                                                          size: usize)
+                                                          -> SimpleResult<I, &'a [u8]> {
     take(i, size).bind(|i, bytes| i.ret(bytes))
 }
 
-fn message<'a, I: U8Input<Buffer=&'a [u8], Token=u8>>(i: I) -> SimpleResult<I, Result<json::Value, json::Error>> {
-    headers(i).bind(|i, headers| {
-        content(i, headers.content_length)
-    }).bind(|i, buffer| {
-        i.ret(json::from_slice(buffer))
-    })
+fn message<'a, I: U8Input<Buffer = &'a [u8], Token = u8>>
+    (i: I)
+     -> SimpleResult<I, Result<json::Value, json::Error>> {
+    headers(i)
+        .bind(|i, headers| content(i, headers.content_length))
+        .bind(|i, buffer| i.ret(json::from_slice(buffer)))
 }
 
-pub fn parse_message(msg: &[u8]) -> Result<Result<json::Value, json::Error>, (&[u8], chomp::parsers::Error<u8>)> {
+pub fn parse_message
+    (msg: &[u8])
+     -> Result<Result<json::Value, json::Error>, (&[u8], chomp::parsers::Error<u8>)> {
     parse_only(message, msg)
 }
 
@@ -80,7 +84,7 @@ impl HeaderType {
                     HeaderType::Invalid
                 }
             }
-            _ => HeaderType::Other
+            _ => HeaderType::Other,
         }
     }
 }
@@ -90,12 +94,10 @@ struct Headers {
 }
 
 impl FromIterator<HeaderType> for Headers {
-    fn from_iter<I: IntoIterator<Item=HeaderType>>(iter: I) -> Self {
+    fn from_iter<I: IntoIterator<Item = HeaderType>>(iter: I) -> Self {
         for header in iter {
             if let HeaderType::ContentLengthHeader(length) = header {
-                return Headers {
-                    content_length: length
-                }
+                return Headers { content_length: length };
             }
         }
         unreachable!()

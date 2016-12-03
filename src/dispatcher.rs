@@ -1,12 +1,13 @@
 use serde_json::{Map, Value, from_value};
 use messages;
 use messages::IncomingMessage;
-use std::iter::{IntoIterator};
+use std::iter::IntoIterator;
 use error::Error;
 
 fn handle_object(json_object: Map<String, Value>) -> Result<IncomingMessage, Error> {
     if json_object.get("id").is_some() {
-        let deserialized_response = from_value::<messages::ResponseMessage>(Value::Object(json_object.clone()))?;
+        let deserialized_response =
+            from_value::<messages::ResponseMessage>(Value::Object(json_object.clone()))?;
         Ok(IncomingMessage::Response(deserialized_response))
     } else {
         Ok(IncomingMessage::Notification(from_value::<messages::Notification>(Value::Object(json_object.clone()))?))
@@ -18,7 +19,7 @@ pub fn handle_raw_message(raw_message: Value) -> Result<IncomingMessage, Error> 
     match raw_message {
         Value::Object(message) => handle_object(message),
         Value::Array(messages) => messages.into_iter().map(handle_raw_message).collect(),
-        _ => Err(Error::OOL)
+        _ => Err(Error::OOL),
     }
 }
 
@@ -48,9 +49,11 @@ mod tests {
 
         if let IncomingMessage::MultipleMessages(messages) = result {
             if let IncomingMessage::Notification(ref notification) = messages[1] {
-                assert_eq!(
-                    notification,
-                    &messages::Notification { method: "combobulate".to_string(), params: "baz".to_string() });
+                assert_eq!(notification,
+                           &messages::Notification {
+                               method: "combobulate".to_string(),
+                               params: "baz".to_string(),
+                           });
             } else {
                 panic!("Was not a Notification")
             }

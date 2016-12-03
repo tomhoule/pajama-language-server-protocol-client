@@ -23,7 +23,7 @@ pub type Result<T> = StdResult<T, Error>;
 pub enum Error {
     Deserialization(serde_json::Error),
     Io(io::Error),
-    OOL
+    OOL,
 }
 
 impl From<()> for Error {
