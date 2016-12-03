@@ -1,20 +1,25 @@
+use crossbeam::sync::MsQueue;
 use futures::{Async, AsyncSink, Future, Poll, Sink};
-use futures::stream::{Peekable, Stream};
-use futures::sync::mpsc;
+use futures::stream::{SplitSink};
 use tokio_service::Service;
 use messages::{RequestMessage, ResponseMessage};
 use error::{Error};
 use uuid::Uuid;
 use std::cell::RefCell;
 use std::rc::Rc;
-use language_server_io::LanguageServerIo;
+use language_server_io::AsyncChildIo;
+use tokio_core::io::Framed;
+use codec::RpcCodec;
+
+type Responses = Rc<MsQueue<ResponseMessage>>;
+type ServerInput = Rc<RefCell<SplitSink<Framed<AsyncChildIo, RpcCodec>>>>;
 
 pub struct RequestHandle {
+    current_response: Rc<RefCell<Option<ResponseMessage>>>,
     id: Uuid,
     request: Option<RequestMessage>,
-    server_input: LanguageServerIo,
-    receiver: Rc<RefCell<Peekable<mpsc::UnboundedReceiver<ResponseMessage>>>>,
-    write_status: Async<()>,
+    responses: Responses,
+    server_input: ServerInput,
 }
 
 impl Future for RequestHandle {
@@ -22,64 +27,58 @@ impl Future for RequestHandle {
     type Error = Error;
 
     fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
-
+        let mut server_input = self.server_input.borrow_mut();
         if let Some(request) = self.request.take() {
-            let mut server_input = self.server_input.borrow_mut();
             match server_input.start_send(request)? {
-                AsyncSink::Ready => {
-                    self.write_status = server_input.poll_complete()?;
-                },
-                AsyncSink::NotReady(request) => {
-                    self.request = Some(request);
+                AsyncSink::Ready => (),
+                AsyncSink::NotReady(req) => {
+                    self.request = Some(req);
                     return Ok(Async::NotReady)
                 }
             }
         }
 
-        match self.write_status {
-            Async::NotReady => {
-                self.write_status = self.server_input.borrow_mut().poll_complete()?;
-                if let Async::Ready(()) = self.write_status {
-                    ()
-                } else {
-                    return Ok(Async::NotReady)
-                }
-            },
-            Async::Ready(()) => ()
+        match server_input.poll_complete()? {
+            Async::Ready(()) => (),
+            Async::NotReady => return Ok(Async::NotReady)
         }
 
-        debug!("request handle - completed write, {:?}", self.write_status);
-        let mut receiver = self.receiver.borrow_mut();
-
-        debug!("request handle - waiting for response");
-        match receiver.peek() {
-            Ok(Async::Ready(Some(response))) => {
-                if response.id != self.id {
-                    return Ok(Async::NotReady)
-                }
-            },
-            _ => return Ok(Async::NotReady)
-        }
-
-        match receiver.poll() {
-            Ok(Async::Ready(Some(response))) => {
+        let mut current_response = self.current_response.borrow_mut();
+        if current_response.is_none() {
+            match self.responses.try_pop() {
+                Some(next) => {
+                    if next.id == self.id {
+                        Ok(Async::Ready(next))
+                    } else {
+                        *current_response = Some(next);
+                        Ok(Async::NotReady)
+                    }
+                },
+                None => return Ok(Async::NotReady)
+            }
+        } else {
+            let response = current_response.take().unwrap();
+            if response.id == self.id {
                 Ok(Async::Ready(response))
-            },
-            _ => Err(Error::OOL)
+            } else {
+                Ok(Async::NotReady)
+            }
         }
     }
 }
 
 pub struct RpcClient {
-    server_input: LanguageServerIo,
-    responses: Rc<RefCell<Peekable<mpsc::UnboundedReceiver<ResponseMessage>>>>,
+    server_input: ServerInput,
+    responses: Responses,
+    current_response: Rc<RefCell<Option<ResponseMessage>>>,
 }
 
 impl RpcClient {
-    pub fn new(server_input: LanguageServerIo, receiver: mpsc::UnboundedReceiver<ResponseMessage>) -> RpcClient {
+    pub fn new(server_input: SplitSink<Framed<AsyncChildIo, RpcCodec>>, responses: Responses) -> RpcClient {
         RpcClient {
-            server_input: server_input,
-            responses: Rc::new(RefCell::new(receiver.peekable())),
+            server_input: Rc::new(RefCell::new(server_input)),
+            responses: responses,
+            current_response: Rc::new(RefCell::new(None)),
         }
     }
 }
@@ -91,99 +90,107 @@ impl Service for RpcClient {
     type Future = RequestHandle;
 
     fn call(&self, request: Self::Request) -> Self::Future {
-        let request_id = request.id;
         RequestHandle {
-            id: request_id,
+            current_response: self.current_response.clone(),
+            id: request.id,
             request: Some(request),
+            responses: self.responses.clone(),
             server_input: self.server_input.clone(),
-            receiver: self.responses.clone(),
-            write_status: Async::NotReady,
         }
     }
 }
 
-// #[cfg(test)]
-// mod test {
-//     use super::RpcClient;
-//     use uuid::Uuid;
-//     use messages::{RequestMessage, ResponseMessage};
-//     use tokio_service::Service;
-//     use futures::{Future, Sink};
-//     use futures::sync::mpsc;
-//     use futures::stream::{iter, Stream};
-//     use tokio_core::reactor::{Core};
-//     use language_server_io::{AsyncChildIo, LanguageServerIo};
-//     use std::process::{Command, Stdio};
-//     use serde_json as json;
+#[cfg(test)]
+mod test {
+    use super::RpcClient;
+    use uuid::Uuid;
+    use messages::{RequestMessage, ResponseMessage};
+    use tokio_service::Service;
+    use futures::Future;
+    use futures::stream::Stream;
+    use tokio_core::reactor::{Core};
+    use language_server_io::AsyncChildIo;
+    use std::process::{Command, Stdio};
+    use serde_json as json;
+    use tokio_core::io::Io;
+    use crossbeam::sync::MsQueue;
+    use codec::RpcCodec;
+    use std::rc::Rc;
 
-//     #[test]
-//     fn rpc_client_can_be_called() {
-//         let core = Core::new().unwrap();
-//         let (_, receiver) = mpsc::unbounded();
-//         let child = Command::new("/bin/sh")
-//             .arg("hi")
-//             .stdin(Stdio::piped())
-//             .stdout(Stdio::piped())
-//             .stderr(Stdio::piped())
-//             .spawn()
-//             .unwrap();
-//         let lsio = AsyncChildIo(child).into_lsio();
-//         let client = RpcClient::new(sink, receiver);
-//         let request = RequestMessage {
-//             id: Uuid::new_v4(),
-//             method: "test_method".to_string(),
-//             params: json::to_value(""),
-//         };
-//         let future = client.call(request);
-//         core.handle()
-//             .spawn(future
-//                    .map(|_| ())
-//                    .map_err(|_| ()));
-//     }
+    #[test]
+    fn rpc_client_can_be_called() {
+        let core = Core::new().unwrap();
+        let child = Command::new("/bin/sh")
+            .arg("hi")
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .spawn()
+            .unwrap();
+        let (sink, _) = AsyncChildIo::new(child, &core.handle())
+            .unwrap()
+            .framed(RpcCodec)
+            .split();
+        let responses = MsQueue::new();
+        let client = RpcClient::new(sink, Rc::new(responses));
+        let request = RequestMessage {
+            id: Uuid::new_v4(),
+            method: "test_method".to_string(),
+            params: json::to_value(""),
+        };
+        let future = client.call(request);
+        core.handle()
+            .spawn(future
+                   .map(|_| ())
+                   .map_err(|_| ()));
+    }
 
-//     #[test]
-//     fn rpc_client_can_match_responses_to_requests() {
-//         let mut core = Core::new().unwrap();
-//         let (sender, receiver) = mpsc::unbounded();
-//         let child = Command::new("/bin/sh")
-//             .stdin(Stdio::piped())
-//             .stdout(Stdio::piped())
-//             .stderr(Stdio::piped())
-//             .spawn()
-//             .unwrap();
-//         let (sink, _) = make_io_wrapper(child, core.handle()).unwrap().split();
-//         let client = RpcClient::new(sink, receiver);
+    #[test]
+    fn rpc_client_can_match_responses_to_requests() {
+        let mut core = Core::new().unwrap();
+        let child = Command::new("cat")
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .unwrap();
+        let responses = MsQueue::new();
+        let (sink, _) = AsyncChildIo::new(child, &core.handle())
+            .unwrap()
+            .framed(RpcCodec)
+            .split();
+        let client = RpcClient::new(sink, Rc::new(responses));
 
-//         let request_id = Uuid::new_v4();
-//         let request = RequestMessage {
-//             id: request_id,
-//             method: "test_method".to_string(),
-//             params: json::to_value(""),
-//         };
-//         let response = ResponseMessage {
-//             id: request_id,
-//             result: "never gonna give you up".to_string(),
-//             error: None
-//         };
-//         let future = client.call(request);
+        let request_id = Uuid::new_v4();
+        let request = RequestMessage {
+            id: request_id,
+            method: "test_method".to_string(),
+            params: json::to_value(""),
+        };
+        let response = ResponseMessage {
+            id: request_id,
+            result: "never gonna give you up".to_string(),
+            error: None
+        };
+        let future = client.call(request);
 
-//         let request_2_id = Uuid::new_v4();
-//         let request_2 = RequestMessage {
-//             id: request_2_id,
-//             method: "rickroll".to_string(),
-//             params: json::to_value(""),
-//         };
-//         let response_2 = ResponseMessage {
-//             id: request_2_id,
-//             result: "never gonna let you down".to_string(),
-//             error: None
-//         };
-//         let future_2 = client.call(request_2);
+        let request_2_id = Uuid::new_v4();
+        let request_2 = RequestMessage {
+            id: request_2_id,
+            method: "rickroll".to_string(),
+            params: json::to_value(""),
+        };
+        let response_2 = ResponseMessage {
+            id: request_2_id,
+            result: "never gonna let you down".to_string(),
+            error: None
+        };
+        let future_2 = client.call(request_2);
 
-//         sender.send_all(iter(vec!(Ok(response_2.clone()), Ok(response.clone())))).wait().unwrap();
+        client.responses.push(response_2.clone());
+        client.responses.push(response.clone());
 
-//         // Need to be in this order because we are running them synchronously here
-//         assert_eq!(core.run(future_2).unwrap(), response_2);
-//         assert_eq!(core.run(future).unwrap(), response);
-//     }
-// }
+        // Need to be in this order because we are running them synchronously here
+        assert_eq!(core.run(future_2).unwrap(), response_2);
+        assert_eq!(core.run(future).unwrap(), response);
+    }
+}

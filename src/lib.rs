@@ -3,6 +3,7 @@
 #![feature(conservative_impl_trait)]
 
 #[macro_use] extern crate chomp;
+extern crate crossbeam;
 extern crate futures;
 extern crate libc;
 #[macro_use] extern crate log;
@@ -22,7 +23,6 @@ mod language_server_io;
 mod message_parser;
 mod messages;
 mod services;
-mod worker;
 
 pub use language::Language;
 
@@ -31,23 +31,24 @@ use error::Result as CustomResult;
 use tokio_core::reactor::Core;
 use language_server_io::AsyncChildIo;
 use services::{RpcClient};
-use worker::Worker;
 use uuid::Uuid;
-use messages::{Notification, RequestMessage};
-use futures::sync::mpsc;
+use messages::{Notification, RequestMessage, IncomingMessage};
 use tokio_service::Service;
 use futures::stream::Stream;
 use serde_json as json;
 use serde_json::builder::{ObjectBuilder};
 use std::env;
 use services::RequestHandle;
+use codec::RpcCodec;
+use tokio_core::io::Io;
 use std::rc::Rc;
-use std::cell::RefCell;
+use crossbeam::sync::MsQueue;
+use futures::Future;
 
 pub struct LanguageServer {
     client: RpcClient,
     pub core: Core,
-    pub notifications: Box<Stream<Item=Notification, Error=()>>,
+    pub notifications: Rc<MsQueue<Notification>>,
 }
 
 impl LanguageServer {
@@ -62,15 +63,38 @@ impl LanguageServer {
             .stdout(Stdio::piped())
             .spawn()?;
 
-        let lsio = AsyncChildIo::new(child, &handle)?.into_lsio();
+        let (sink, stream) = AsyncChildIo::new(child, &handle)?.framed(RpcCodec).split();
 
-        let (responses_sender, responses_receiver) = mpsc::unbounded();
-        let (notifications_queue, notifications_receiver) = mpsc::unbounded();
+        let responses = Rc::new(MsQueue::new());
+        let client = RpcClient::new(sink, responses.clone());
 
-        let client = RpcClient::new(lsio.clone(), responses_receiver);
-        debug!("server start up");
+        let notifications = Rc::new(MsQueue::new());
+        let notifs = notifications.clone();
 
-        Ok(LanguageServer { client, core, notifications: Box::new(notifications_receiver) })
+        let worker = stream.for_each(move |incoming_message| {
+            match incoming_message {
+                IncomingMessage::Response(message) => {
+                    responses.push(message);
+                    Ok(())
+                },
+                IncomingMessage::Notification(notification) => {
+                    notifs.push(notification);
+                    Ok(())
+                },
+                _ => {
+                    Ok(())
+                }
+            }
+        }).map_err(|_| ());
+
+        core.handle().spawn(worker);
+
+        let ls = LanguageServer {
+            client: client,
+            notifications: notifications,
+            core: core,
+        };
+        Ok(ls)
     }
 
     pub fn initialize(&self) -> RequestHandle {

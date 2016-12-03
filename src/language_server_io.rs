@@ -1,9 +1,7 @@
+use std::cell::RefCell;
 use mio::unix::EventedFd;
 use futures::{Async};
-use codec::RpcCodec;
-use std::cell::RefCell;
-use std::rc::Rc;
-use tokio_core::io::{Framed, Io};
+use tokio_core::io::Io;
 use tokio_core::reactor::{Handle, PollEvented};
 use std::process::{ChildStdout, ChildStdin};
 use error::Result;
@@ -96,10 +94,6 @@ impl AsyncChildIo {
             read_child: false,
         })
     }
-
-    pub fn into_lsio(self) -> LanguageServerIo {
-        Rc::new(RefCell::new(self.framed(RpcCodec)))
-    }
 }
 
 impl Io for AsyncChildIo {
@@ -144,8 +138,6 @@ impl io::Write for AsyncChildIo {
     }
 }
 
-pub type LanguageServerIo = Rc<RefCell<Framed<AsyncChildIo, RpcCodec>>>;
-
 #[cfg(test)]
 mod test {
     extern crate env_logger;
@@ -156,7 +148,6 @@ mod test {
     use tokio_core::reactor::*;
     use std::process::*;
     use std::io::{Read, Write};
-    use std::time::Duration;
     use futures::stream::*;
     use std::str;
 
@@ -177,7 +168,7 @@ mod test {
             if let Async::Ready(()) = self.inner.poll_write() {
                 let written = self.inner.write("lorem ipsum\n\n".as_bytes()).unwrap();
                 debug!("write - wrote {:?} bytes", written);
-                self.inner.flush();
+                self.inner.flush().unwrap();
                 self.count +=1;
                 return Ok(Async::Ready(Some(())));
             }
@@ -319,12 +310,12 @@ mod test {
             .unwrap();
 
         let mut core = Core::new().unwrap();
-        let (mut sink, mut stream) = AsyncChildIo::new(child, &core.handle()).unwrap().framed(UpcaseCodec).split();
+        let (sink, stream) = AsyncChildIo::new(child, &core.handle()).unwrap().framed(UpcaseCodec).split();
 
         let lowercase: Vec<Result<String>> = vec!["abc\n", "def\n", "ghi\n", "jkl\n"].into_iter().map(|s| Ok(s.to_string().to_uppercase())).collect();
         let input_stream = iter(lowercase);
 
-        let mut result_vec = RefCell::new(Vec::<String>::new());
+        let result_vec = RefCell::new(Vec::<String>::new());
 
         let fut = stream.take(4).for_each(|s| {
             if s.len() > 0 {

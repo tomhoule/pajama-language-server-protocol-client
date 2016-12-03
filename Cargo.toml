@@ -5,6 +5,7 @@ authors = ["Tom Houlé <tom@tomhoule.com>"]
 
 [dependencies]
 chomp = "*"
+crossbeam = "*"
 futures = "*"
 libc = "*"
 log = "*"

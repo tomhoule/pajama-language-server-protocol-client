@@ -2,14 +2,14 @@ use std::io;
 use tokio_core::io::{Codec, EasyBuf};
 use serde_json as json;
 use message_parser::parse_message;
-use messages::RequestMessage;
+use messages::{IncomingMessage, RequestMessage};
 use std::io::Write;
+use dispatcher::handle_raw_message;
 
-/// Don't cross the polleventeds!!!!
 pub struct RpcCodec;
 
 impl Codec for RpcCodec {
-    type In = json::Value;
+    type In = IncomingMessage;
     type Out = RequestMessage;
 
     fn decode(&mut self, buf: &mut EasyBuf) -> Result<Option<Self::In>, io::Error> {
@@ -18,7 +18,11 @@ impl Codec for RpcCodec {
         match json {
             Ok(inner) => {
                 match inner {
-                    Ok(json_value) => Ok(Some(json_value)),
+                    Ok(json_value) => {
+                        let message = handle_raw_message(json_value)
+                            .map_err(|err| io::Error::new(io::ErrorKind::Other, err))?;
+                        Ok(Some(message))
+                    },
                     Err(parse_error) => Err(io::Error::new(io::ErrorKind::InvalidData, parse_error)),
                 }
             }
@@ -31,8 +35,6 @@ impl Codec for RpcCodec {
         buf.write(format!("Content-Length: {}\r\n\r\n", payload.len()).as_bytes())?;
         debug!("Writing: {}", payload);
         buf.write(payload.as_bytes())?;
-        debug!("Furiously writing newlines");
-        buf.write("\n\n\r\n\r\n".as_bytes())?;
         Ok(())
     }
 }
