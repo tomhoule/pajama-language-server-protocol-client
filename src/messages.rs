@@ -44,6 +44,17 @@ pub struct RequestMessage {
     pub params: json::Value,
 }
 
+impl RequestMessage {
+    pub fn new(method: String, params: json::Value) -> Self {
+        RequestMessage {
+            jsonrpc: "2.0".to_string(),
+            id: Uuid::new_v4(),
+            method: method,
+            params: params,
+        }
+    }
+}
+
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct ResponseMessage {
     pub jsonrpc: String,
