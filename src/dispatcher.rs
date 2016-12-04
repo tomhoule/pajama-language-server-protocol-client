@@ -8,14 +8,17 @@ fn handle_object(json_object: Map<String, Value>) -> Result<IncomingMessage, Err
     if json_object.get("id").is_some() {
         let deserialized_response =
             from_value::<messages::ResponseMessage>(Value::Object(json_object.clone()))?;
+        debug!("is a response");
         Ok(IncomingMessage::Response(deserialized_response))
     } else {
+        debug!("is a notification");
         Ok(IncomingMessage::Notification(from_value::<messages::Notification>(Value::Object(json_object.clone()))?))
     }
 }
 
 
 pub fn handle_raw_message(raw_message: Value) -> Result<IncomingMessage, Error> {
+    debug!("handling raw message {:?}", raw_message);
     match raw_message {
         Value::Object(message) => handle_object(message),
         Value::Array(messages) => messages.into_iter().map(handle_raw_message).collect(),

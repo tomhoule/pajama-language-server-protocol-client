@@ -27,6 +27,7 @@ impl Future for RequestHandle {
     type Error = Error;
 
     fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
+        debug!("polling for a response, {:?}", self.id);
         let mut server_input = self.server_input.borrow_mut();
         if let Some(request) = self.request.take() {
             match server_input.start_send(request)? {
@@ -43,6 +44,7 @@ impl Future for RequestHandle {
             Async::NotReady => return Ok(Async::NotReady),
         }
 
+        debug!("trying to match a response to request {:?}", self.id);
         let mut current_response = self.current_response.borrow_mut();
         if current_response.is_none() {
             match self.responses.try_pop() {

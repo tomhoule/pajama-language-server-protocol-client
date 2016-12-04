@@ -76,10 +76,12 @@ impl LanguageServer {
         let worker = stream.for_each(move |incoming_message| {
                 match incoming_message {
                     IncomingMessage::Response(message) => {
+                        debug!("pushing a response {:?}", message);
                         responses.push(message);
                         Ok(())
                     }
                     IncomingMessage::Notification(notification) => {
+                        debug!("pushing a notification {:?}", notification);
                         notifs.push(notification);
                         Ok(())
                     }
@@ -103,12 +105,14 @@ impl LanguageServer {
             let pid = libc::getpid();
             let cwd = env::current_dir().unwrap();
             self.client.call(RequestMessage {
+                jsonrpc: "2.0".to_string(),
                 id: Uuid::new_v4(),
                 method: "initialize".to_string(),
                 params: json::to_value(ObjectBuilder::new()
                     .insert("processId", pid)
                     .insert("rootPath", cwd)
-                    .insert_object("clientCapabilities", |builder| builder)
+                    .insert_object("initializationOptions", |builder| builder)
+                    .insert_object("capabilities", |builder| builder)
                     .build()),
             })
         }

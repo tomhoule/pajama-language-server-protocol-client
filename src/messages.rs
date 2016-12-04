@@ -38,6 +38,7 @@ pub struct RpcError {
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct RequestMessage {
+    pub jsonrpc: String,
     pub id: Uuid,
     pub method: String,
     pub params: json::Value,
@@ -45,8 +46,9 @@ pub struct RequestMessage {
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct ResponseMessage {
+    jsonrpc: String,
     pub id: Uuid,
-    pub result: String,
+    pub result: json::Value,
     pub error: Option<String>,
 }
 

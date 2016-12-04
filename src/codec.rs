@@ -5,6 +5,7 @@ use message_parser::parse_message;
 use messages::{IncomingMessage, RequestMessage};
 use std::io::Write;
 use dispatcher::handle_raw_message;
+use std::str;
 
 pub struct RpcCodec;
 
@@ -13,22 +14,26 @@ impl Codec for RpcCodec {
     type Out = RequestMessage;
 
     fn decode(&mut self, buf: &mut EasyBuf) -> Result<Option<Self::In>, io::Error> {
-        debug!("decode - polling {:?}", buf.as_slice());
-        let json = parse_message(buf.as_slice());
-        match json {
-            Ok(inner) => {
-                match inner {
-                    Ok(json_value) => {
-                        let message = handle_raw_message(json_value)
-                            .map_err(|err| io::Error::new(io::ErrorKind::Other, err))?;
-                        Ok(Some(message))
-                    }
-                    Err(parse_error) => {
-                        Err(io::Error::new(io::ErrorKind::InvalidData, parse_error))
-                    }
-                }
+        let json = {
+            match parse_message(buf.as_slice()) {
+                Ok(inner) => inner,
+                Err(_) => return Ok(None),
             }
-            Err(_) => Ok(None),
+        };
+        debug!("decode - json value: {:?}", json);
+        match json {
+            Ok(json_value) => {
+                let message = handle_raw_message(json_value)
+                    .map_err(|err| io::Error::new(io::ErrorKind::Other, err))?;
+                debug!("decode - returning message {:?}", message);
+                let buf_end = buf.len() - 1;
+                buf.drain_to(buf_end);
+                Ok(Some(message))
+            }
+            Err(parse_error) => {
+                debug!("decode - couldn't parse: {:?}", parse_error);
+                Err(io::Error::new(io::ErrorKind::InvalidData, parse_error))
+            }
         }
     }
 
@@ -36,7 +41,7 @@ impl Codec for RpcCodec {
         let payload =
             json::to_string(&msg).map_err(|err| io::Error::new(io::ErrorKind::Other, err))?;
         buf.write(format!("Content-Length: {}\r\n\r\n", payload.len()).as_bytes())?;
-        debug!("Writing: {}", payload);
+        debug!("encode - writing: {}", payload);
         buf.write(payload.as_bytes())?;
         Ok(())
     }
