@@ -5,8 +5,8 @@ authors = ["Tom Houlé <tom@tomhoule.com>"]
 
 [dependencies]
 chomp = "*"
-crossbeam = "*"
 futures = "*"
+languageserver-types = { git = "https://github.com/gluon-lang/languageserver-types" }
 libc = "*"
 log = "*"
 mio = "*"

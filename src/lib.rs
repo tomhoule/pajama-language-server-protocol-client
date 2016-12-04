@@ -4,8 +4,8 @@
 
 #[macro_use]
 extern crate chomp;
-extern crate crossbeam;
 extern crate futures;
+extern crate languageserver_types;
 extern crate libc;
 #[macro_use]
 extern crate log;
@@ -27,6 +27,11 @@ mod language;
 mod language_server_io;
 mod message_parser;
 mod messages;
+mod utils;
+
+pub mod types {
+    pub use languageserver_types::*;
+}
 
 pub use language::Language;
 
@@ -35,16 +40,18 @@ use std::process::{Command, Stdio};
 use error::{Error, Result as CustomResult};
 use tokio_core::reactor::{Handle, PollEvented};
 use language_server_io::AsyncChildIo;
-use client::{RpcClient, RequestHandle};
+use client::RpcClient;
 use messages::{Notification, RequestMessage, IncomingMessage};
 use tokio_service::Service;
 use futures::stream::Stream;
 use serde_json as json;
-use serde_json::builder::ObjectBuilder;
-use std::env;
 use codec::RpcCodec;
 use tokio_core::io::Io;
 use futures::Future;
+use languageserver_types::*;
+use utils::handle_response;
+
+type Response<R, E> = Box<Future<Item=Result<R, E>, Error=Error>>;
 
 pub struct LanguageServer {
     client: RpcClient,
@@ -96,17 +103,10 @@ impl LanguageServer {
         Ok(ls)
     }
 
-    pub fn initialize(&self) -> RequestHandle {
-        unsafe {
-            let pid = libc::getpid();
-            let cwd = env::current_dir().unwrap();
-            let params = json::to_value(ObjectBuilder::new()
-                .insert("processId", pid)
-                .insert("rootPath", cwd)
-                .insert_object("initializationOptions", |builder| builder)
-                .insert_object("capabilities", |builder| builder)
-                .build());
-            self.client.call(RequestMessage::new("initialize".to_string(), params))
-        }
+    pub fn initialize(&self, params: InitializeParams) -> Response<InitializeResult, InitializeError> {
+        let h = self.client.call(RequestMessage::new("initialize".to_string(), json::to_value(params)));
+        Box::new(h.then(|res| {
+            handle_response(res?)
+        }))
     }
 }

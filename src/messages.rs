@@ -59,8 +59,8 @@ impl RequestMessage {
 pub struct ResponseMessage {
     pub jsonrpc: String,
     pub id: Uuid,
-    pub result: json::Value,
-    pub error: Option<String>,
+    pub result: Option<json::Value>,
+    pub error: Option<json::Value>,
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]

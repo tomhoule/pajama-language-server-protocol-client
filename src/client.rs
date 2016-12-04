@@ -177,7 +177,7 @@ mod test {
         let response = ResponseMessage {
             jsonrpc: "2.0".to_string(),
             id: request.id,
-            result: json::to_value("never gonna give you up"),
+            result: Some(json::to_value("never gonna give you up")),
             error: None,
         };
         let expected_response = response.clone();
@@ -187,7 +187,7 @@ mod test {
         let response_2 = ResponseMessage {
             jsonrpc: "2.0".to_string(),
             id: request_2.id,
-            result: json::to_value("never gonna let you down"),
+            result: Some(json::to_value("never gonna let you down")),
             error: None,
         };
         let expected_response_2 = response_2.clone();

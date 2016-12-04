@@ -3,10 +3,12 @@ extern crate env_logger;
 extern crate tokio_core;
 extern crate tokio_language_server_protocol as lib;
 extern crate futures;
+extern crate serde_json as json;
 
+use lib::types::*;
 use lib::{Language, LanguageServer};
 use std::process::{Command, Stdio};
-// use futures::Future;
+use std::env;
 use tokio_core::reactor::Core;
 
 struct Golang;
@@ -34,7 +36,15 @@ fn golang_language_server_can_initialize() {
     let mut core = Core::new().unwrap();
 
     let server = LanguageServer::new(Golang, core.handle()).unwrap();
-    let request = server.initialize();
+
+    let params = InitializeParams {
+        process_id: None,
+        root_path: Some(env::current_dir().unwrap().to_string_lossy().to_string()),
+        initialization_options: None,
+        capabilities: json::Value::Null,
+    };
+
+    let request = server.initialize(params);
     let response = core.run(request);
     assert!(response.is_ok());
 }
