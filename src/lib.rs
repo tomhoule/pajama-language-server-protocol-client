@@ -18,6 +18,7 @@ extern crate tokio_core;
 extern crate tokio_service;
 extern crate uuid;
 
+mod client;
 mod codec;
 mod dispatcher;
 mod error;
@@ -25,7 +26,6 @@ mod language;
 mod language_server_io;
 mod message_parser;
 mod messages;
-mod services;
 
 pub use language::Language;
 
@@ -33,7 +33,7 @@ use std::process::{Command, Stdio};
 use error::Result as CustomResult;
 use tokio_core::reactor::Core;
 use language_server_io::AsyncChildIo;
-use services::RpcClient;
+use client::{RpcClient, RequestHandle};
 use uuid::Uuid;
 use messages::{Notification, RequestMessage, IncomingMessage};
 use tokio_service::Service;
@@ -41,7 +41,6 @@ use futures::stream::Stream;
 use serde_json as json;
 use serde_json::builder::ObjectBuilder;
 use std::env;
-use services::RequestHandle;
 use codec::RpcCodec;
 use tokio_core::io::Io;
 use std::rc::Rc;
