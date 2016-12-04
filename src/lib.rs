@@ -31,6 +31,18 @@ mod utils;
 
 pub mod types {
     pub use languageserver_types::*;
+
+    #[derive(Deserialize, Debug)]
+    pub enum CompletionResult {
+        CompletionList(CompletionList),
+        CompletionItems(Vec<CompletionItem>),
+    }
+
+    #[derive(Deserialize, Debug)]
+    pub enum LocationOrLocationList {
+        Location(Location),
+        Locations(Vec<Location>)
+    }
 }
 
 pub use language::Language;
@@ -48,14 +60,27 @@ use serde_json as json;
 use codec::RpcCodec;
 use tokio_core::io::Io;
 use futures::Future;
-use languageserver_types::*;
+use types::*;
 use utils::handle_response;
+use serde::{Serialize, Deserialize};
 
-type Response<R, E> = Box<Future<Item=Result<R, E>, Error=Error>>;
+type Response<R, E> = Box<Future<Item = Result<R, E>, Error = Error>>;
+pub trait RpcFuture<R, E>: Future<Item=Result<R, E>, Error=Error> {}
+impl<R, E> RpcFuture<R, E> for Future<Item=Result<R, E>, Error=Error> {}
 
 pub struct LanguageServer {
     client: RpcClient,
     pub notifications: Box<Stream<Item = Notification, Error = Error>>,
+}
+
+macro_rules! requests {
+    ( $( $name:ident: $method:expr, $params:ty, $result:ty, $error:ty, $docstring:expr;)+ )=> {$(
+        #[doc=$docstring]
+        pub fn $name(&self, params: $params) -> impl 'static + Future<Item=Result<$result, $error>>
+        {
+            self.call_with_params($method, params)
+        }
+    )*}
 }
 
 impl LanguageServer {
@@ -103,10 +128,35 @@ impl LanguageServer {
         Ok(ls)
     }
 
-    pub fn initialize(&self, params: InitializeParams) -> Response<InitializeResult, InitializeError> {
-        let h = self.client.call(RequestMessage::new("initialize".to_string(), json::to_value(params)));
-        Box::new(h.then(|res| {
-            handle_response(res?)
-        }))
+    fn call_with_params<'a, REQ, RES, ERR>(&self, method: &'static str, params: REQ) -> impl 'a + Future<Item=Result<RES, ERR>, Error=Error>
+        where RES: Deserialize + 'static,
+              ERR: Deserialize + 'static,
+              REQ: Serialize
+    {
+
+        let h = self.client.call(RequestMessage::new(method.to_string(), json::to_value(params)));
+        h.then(|res| handle_response(res?))
     }
+
+    requests!(
+        initialize: REQUEST__Initialize, InitializeParams, InitializeResult, InitializeError, "Initializes the server";
+        shutdown: REQUEST__Shutdown, (), json::Value, json::Value, "";
+        completion: REQUEST__Completion, TextDocumentPositionParams, CompletionResult, json::Value, "";
+        resolve_completion: REQUEST__ResolveCompletionItem, CompletionItem, CompletionItem, json::Value, "";
+        hover: REQUEST__Hover, TextDocumentPositionParams, Hover, json::Value, "";
+        signature_help: REQUEST__SignatureHelp, TextDocumentPositionParams, SignatureHelp, json::Value, "";
+        goto_definition: REQUEST__GotoDefinition, TextDocumentPositionParams, LocationOrLocationList, json::Value, "";
+        find_references: REQUEST__References, ReferenceParams, Vec<Location>, json::Value, "";
+        document_highlights: REQUEST__DocumentHighlight, TextDocumentPositionParams, Vec<DocumentHighlight>, json::Value, "";
+        document_symbols: REQUEST__DocumentSymbols, DocumentSymbolParams, Vec<SymbolInformation>, json::Value, "";
+        workspace_symbols: REQUEST__WorkspaceSymbols, WorkspaceSymbolParams, Vec<SymbolInformation>, json::Value, "";
+        code_action: REQUEST__CodeAction, CodeActionParams, Vec<languageserver_types::Command>, json::Value, "";
+        code_lens: REQUEST__CodeLens, CodeLensParams, Vec<CodeLens>, json::Value, "";
+        resolve_code_lens: REQUEST__CodeLensResolve, CodeLens, CodeLens, json::Value, "";
+        range_formatting: REQUEST__RangeFormatting, DocumentRangeFormattingParams, Vec<TextEdit>, json::Value, "";
+        on_type_formatting: REQUEST__OnTypeFormatting, DocumentRangeFormattingParams, Vec<TextEdit>, json::Value, "";
+        rename: REQUEST__Rename, RenameParams, WorkspaceEdit, json::Value, "";
+    );
+
+    // TODO: DocumentLink
 }

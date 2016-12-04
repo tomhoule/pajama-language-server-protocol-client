@@ -10,6 +10,7 @@ use lib::{Language, LanguageServer};
 use std::process::{Command, Stdio};
 use std::env;
 use tokio_core::reactor::Core;
+// use futures::Future;
 
 struct Golang;
 
@@ -45,6 +46,8 @@ fn golang_language_server_can_initialize() {
     };
 
     let request = server.initialize(params);
+    // TODO: investigate why this crashes
+    // .then(|_| server.shutdown());
     let response = core.run(request);
     assert!(response.is_ok());
 }

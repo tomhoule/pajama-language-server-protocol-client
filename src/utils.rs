@@ -8,12 +8,8 @@ pub fn handle_response<R, E>(response: ResponseMessage) -> Result<Result<R, E>, 
           E: Deserialize
 {
     match (response.result, response.error) {
-        (Some(result), None) => {
-            Ok(Ok(from_value::<R>(result)?))
-        },
-        (None, Some(error)) => {
-            Ok(Err(from_value::<E>(error)?))
-        },
-        _ => Err(Error::OOL)
+        (Some(result), None) => Ok(Ok(from_value::<R>(result)?)),
+        (None, Some(error)) => Ok(Err(from_value::<E>(error)?)),
+        _ => Err(Error::OOL),
     }
 }
