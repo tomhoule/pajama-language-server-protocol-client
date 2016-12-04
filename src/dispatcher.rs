@@ -5,14 +5,15 @@ use std::iter::IntoIterator;
 use error::Error;
 
 fn handle_object(json_object: Map<String, Value>) -> Result<IncomingMessage, Error> {
-    if json_object.get("id").is_some() {
+    let has_id = json_object.get("id").is_some();
+    if has_id {
         let deserialized_response =
-            from_value::<messages::ResponseMessage>(Value::Object(json_object.clone()))?;
+            from_value::<messages::ResponseMessage>(Value::Object(json_object))?;
         debug!("is a response");
         Ok(IncomingMessage::Response(deserialized_response))
     } else {
         debug!("is a notification");
-        Ok(IncomingMessage::Notification(from_value::<messages::Notification>(Value::Object(json_object.clone()))?))
+        Ok(IncomingMessage::Notification(from_value::<messages::Notification>(Value::Object(json_object))?))
     }
 }
 
