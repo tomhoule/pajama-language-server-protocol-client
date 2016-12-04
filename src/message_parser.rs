@@ -122,7 +122,8 @@ mod test {
 Content-Length: 1\r
 Content-Type: application/vscode-jsonrpc; charset=utf8\r
 \r\n
-".as_bytes()
+"
+            .as_bytes()
     }
 
     #[test]
@@ -137,7 +138,8 @@ Content-Length: 13\r
 Content-Type: application/vscode-jsonrpc; charset=utf8\r
 \r
 {\"foo\": true}
-".as_bytes()
+"
+            .as_bytes()
     }
 
     #[test]

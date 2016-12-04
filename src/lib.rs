@@ -36,7 +36,6 @@ use error::{Error, Result as CustomResult};
 use tokio_core::reactor::{Handle, PollEvented};
 use language_server_io::AsyncChildIo;
 use client::{RpcClient, RequestHandle};
-use uuid::Uuid;
 use messages::{Notification, RequestMessage, IncomingMessage};
 use tokio_service::Service;
 use futures::stream::Stream;
@@ -49,7 +48,7 @@ use futures::Future;
 
 pub struct LanguageServer {
     client: RpcClient,
-    pub notifications: Box<Stream<Item=Notification, Error=Error>>,
+    pub notifications: Box<Stream<Item = Notification, Error = Error>>,
 }
 
 impl LanguageServer {
@@ -67,9 +66,11 @@ impl LanguageServer {
         let client = RpcClient::new(sink, responses);
 
         let (notifications_sender, notifications_receiver) = mio::channel::channel();
-        let notifications = EventedReceiver::new(PollEvented::new(notifications_receiver, &handle)?);
+        let notifications = EventedReceiver::new(PollEvented::new(notifications_receiver,
+                                                                  &handle)?);
 
-        let worker = stream.map_err(|err| Error::from(err)).for_each(move |incoming_message| {
+        let worker = stream.map_err(|err| Error::from(err))
+            .for_each(move |incoming_message| {
                 match incoming_message {
                     IncomingMessage::Response(message) => {
                         debug!("pushing a response {:?}", message);
@@ -99,17 +100,13 @@ impl LanguageServer {
         unsafe {
             let pid = libc::getpid();
             let cwd = env::current_dir().unwrap();
-            self.client.call(RequestMessage {
-                jsonrpc: "2.0".to_string(),
-                id: Uuid::new_v4(),
-                method: "initialize".to_string(),
-                params: json::to_value(ObjectBuilder::new()
-                    .insert("processId", pid)
-                    .insert("rootPath", cwd)
-                    .insert_object("initializationOptions", |builder| builder)
-                    .insert_object("capabilities", |builder| builder)
-                    .build()),
-            })
+            let params = json::to_value(ObjectBuilder::new()
+                .insert("processId", pid)
+                .insert("rootPath", cwd)
+                .insert_object("initializationOptions", |builder| builder)
+                .insert_object("capabilities", |builder| builder)
+                .build());
+            self.client.call(RequestMessage::new("initialize".to_string(), params))
         }
     }
 }

@@ -1,4 +1,3 @@
-use std::cell::RefCell;
 use mio::unix::EventedFd;
 use futures::Async;
 use tokio_core::io::Io;
@@ -154,6 +153,7 @@ mod test {
     use std::io::{Read, Write};
     use futures::stream::*;
     use std::str;
+    use std::cell::RefCell;
 
     struct WritePoller {
         count: i32,

@@ -60,13 +60,13 @@ impl Future for RequestHandle {
                 if id == self.id {
                     match self.responses.borrow_mut().poll()? {
                         Async::Ready(Some(message)) => Ok(Async::Ready(message)),
-                        _ => unreachable!()
+                        _ => unreachable!(),
                     }
                 } else {
                     Ok(Async::NotReady)
                 }
-            },
-            None => Ok(Async::NotReady)
+            }
+            None => Ok(Async::NotReady),
         }
     }
 }
@@ -197,12 +197,14 @@ mod test {
         let shared_sender_clone = shared_sender.clone();
         let handle = core.handle();
 
-        let send_responses = Timeout::new(Duration::from_millis(20), &core.handle()).unwrap()
+        let send_responses = Timeout::new(Duration::from_millis(20), &core.handle())
+            .unwrap()
             .then::<_, Result<(), ()>>(move |_| {
                 debug!("sending response_2 now");
                 shared_sender.borrow_mut().send(response_2).unwrap();
                 Ok(())
-            }).then(move |_| Timeout::new(Duration::from_millis(20), &handle).unwrap())
+            })
+            .then(move |_| Timeout::new(Duration::from_millis(20), &handle).unwrap())
             .then::<_, Result<(), ()>>(move |_| {
                 debug!("sending response now");
                 shared_sender_clone.borrow_mut().send(response).unwrap();

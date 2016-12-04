@@ -46,5 +46,4 @@ impl<T> Stream for EventedReceiver<T> {
 
         }
     }
-
 }
