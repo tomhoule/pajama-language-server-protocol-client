@@ -37,10 +37,12 @@ mod tests {
     #[test]
     fn handle_raw_message_works_with_arrays_of_messages() {
         let first_message = builder::ObjectBuilder::new()
+            .insert("jsonrpc", "2.0")
             .insert("id", "48616c6c-6f20-7275-7374-206568206568")
             .insert("result", "frobnicate")
             .build();
         let second_message = builder::ObjectBuilder::new()
+            .insert("jsonrpc", "2.0")
             .insert("method", "combobulate")
             .insert("params", "baz")
             .build();

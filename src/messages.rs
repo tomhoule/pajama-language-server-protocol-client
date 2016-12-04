@@ -46,7 +46,7 @@ pub struct RequestMessage {
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct ResponseMessage {
-    jsonrpc: String,
+    pub jsonrpc: String,
     pub id: Uuid,
     pub result: json::Value,
     pub error: Option<String>,

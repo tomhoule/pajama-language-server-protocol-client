@@ -137,6 +137,7 @@ mod test {
         let responses = MsQueue::new();
         let client = RpcClient::new(sink, Rc::new(responses));
         let request = RequestMessage {
+            jsonrpc: "2.0".to_string(),
             id: Uuid::new_v4(),
             method: "test_method".to_string(),
             params: json::to_value(""),
@@ -165,26 +166,30 @@ mod test {
 
         let request_id = Uuid::new_v4();
         let request = RequestMessage {
+            jsonrpc: "2.0".to_string(),
             id: request_id,
             method: "test_method".to_string(),
             params: json::to_value(""),
         };
         let response = ResponseMessage {
+            jsonrpc: "2.0".to_string(),
             id: request_id,
-            result: "never gonna give you up".to_string(),
+            result: json::to_value("never gonna give you up"),
             error: None,
         };
         let future = client.call(request);
 
         let request_2_id = Uuid::new_v4();
         let request_2 = RequestMessage {
+            jsonrpc: "2.0".to_string(),
             id: request_2_id,
             method: "rickroll".to_string(),
             params: json::to_value(""),
         };
         let response_2 = ResponseMessage {
+            jsonrpc: "2.0".to_string(),
             id: request_2_id,
-            result: "never gonna let you down".to_string(),
+            result: json::to_value("never gonna let you down"),
             error: None,
         };
         let future_2 = client.call(request_2);
