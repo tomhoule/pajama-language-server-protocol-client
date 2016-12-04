@@ -22,6 +22,7 @@ mod client;
 mod codec;
 mod dispatcher;
 mod error;
+mod evented_receiver;
 mod language;
 mod language_server_io;
 mod message_parser;
@@ -29,9 +30,10 @@ mod messages;
 
 pub use language::Language;
 
+use evented_receiver::EventedReceiver;
 use std::process::{Command, Stdio};
-use error::Result as CustomResult;
-use tokio_core::reactor::Core;
+use error::{Error, Result as CustomResult};
+use tokio_core::reactor::{Handle, PollEvented};
 use language_server_io::AsyncChildIo;
 use client::{RpcClient, RequestHandle};
 use uuid::Uuid;
@@ -43,21 +45,15 @@ use serde_json::builder::ObjectBuilder;
 use std::env;
 use codec::RpcCodec;
 use tokio_core::io::Io;
-use std::rc::Rc;
-use crossbeam::sync::MsQueue;
 use futures::Future;
 
 pub struct LanguageServer {
     client: RpcClient,
-    pub core: Core,
-    pub notifications: Rc<MsQueue<Notification>>,
+    pub notifications: Box<Stream<Item=Notification, Error=Error>>,
 }
 
 impl LanguageServer {
-    pub fn new<L: Language>(lang: L) -> CustomResult<Self> {
-        let core = Core::new()?;
-        let handle = core.handle();
-
+    pub fn new<L: Language>(lang: L, handle: Handle) -> CustomResult<Self> {
         let args = lang.get_command();
         let child = Command::new(&args[0]).args(&args[1..])
             .stdin(Stdio::piped())
@@ -66,22 +62,23 @@ impl LanguageServer {
 
         let (sink, stream) = AsyncChildIo::new(child, &handle)?.framed(RpcCodec).split();
 
-        let responses = Rc::new(MsQueue::new());
-        let client = RpcClient::new(sink, responses.clone());
+        let (responses_sender, responses_receiver) = mio::channel::channel();
+        let responses = EventedReceiver::new(PollEvented::new(responses_receiver, &handle)?);
+        let client = RpcClient::new(sink, responses);
 
-        let notifications = Rc::new(MsQueue::new());
-        let notifs = notifications.clone();
+        let (notifications_sender, notifications_receiver) = mio::channel::channel();
+        let notifications = EventedReceiver::new(PollEvented::new(notifications_receiver, &handle)?);
 
-        let worker = stream.for_each(move |incoming_message| {
+        let worker = stream.map_err(|err| Error::from(err)).for_each(move |incoming_message| {
                 match incoming_message {
                     IncomingMessage::Response(message) => {
                         debug!("pushing a response {:?}", message);
-                        responses.push(message);
+                        responses_sender.send(message)?;
                         Ok(())
                     }
                     IncomingMessage::Notification(notification) => {
                         debug!("pushing a notification {:?}", notification);
-                        notifs.push(notification);
+                        notifications_sender.send(notification)?;
                         Ok(())
                     }
                     _ => Ok(()),
@@ -89,12 +86,11 @@ impl LanguageServer {
             })
             .map_err(|_| ());
 
-        core.handle().spawn(worker);
+        handle.spawn(worker);
 
         let ls = LanguageServer {
             client: client,
-            notifications: notifications,
-            core: core,
+            notifications: Box::new(notifications),
         };
         Ok(ls)
     }

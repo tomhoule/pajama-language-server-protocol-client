@@ -1,9 +1,11 @@
+use mio;
 use std::convert::From;
 use std::result::Result as StdResult;
 use serde_json;
 use std::io;
 use std::error;
 use std::fmt;
+use std::sync;
 
 impl From<io::Error> for Error {
     fn from(err: io::Error) -> Error {
@@ -31,6 +33,19 @@ impl From<()> for Error {
         Error::OOL
     }
 }
+
+impl<T> From<mio::channel::SendError<T>> for Error {
+    fn from(_: mio::channel::SendError<T>) -> Self {
+        Error::OOL
+    }
+}
+
+impl From<sync::mpsc::TryRecvError> for Error {
+    fn from(_: sync::mpsc::TryRecvError) -> Self {
+        Error::OOL
+    }
+}
+
 
 impl fmt::Display for Error {
     fn fmt(&self, formatter: &mut fmt::Formatter) -> StdResult<(), fmt::Error> {
