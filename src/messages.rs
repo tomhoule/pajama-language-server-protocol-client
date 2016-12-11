@@ -37,18 +37,27 @@ pub struct RpcError {
 }
 
 #[derive(Debug, Deserialize, Serialize)]
-pub struct RequestMessage {
+pub struct Message {
     pub jsonrpc: String,
-    pub id: Uuid,
+    pub id: Option<Uuid>,
     pub method: String,
     pub params: json::Value,
 }
 
-impl RequestMessage {
-    pub fn new(method: String, params: json::Value) -> Self {
-        RequestMessage {
+impl Message {
+    pub fn new_request(method: String, params: json::Value) -> Self {
+        Message {
             jsonrpc: "2.0".to_string(),
-            id: Uuid::new_v4(),
+            id: Some(Uuid::new_v4()),
+            method: method,
+            params: params,
+        }
+    }
+
+    pub fn new_notification(method: String, params: json::Value) -> Self {
+        Message {
+            jsonrpc: "2.0".to_string(),
+            id: None,
             method: method,
             params: params,
         }
@@ -65,6 +74,17 @@ pub struct ResponseMessage {
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct Notification {
+    pub jsonrpc: String,
     pub method: String,
-    pub params: String,
+    pub params: json::Value,
+}
+
+impl Notification {
+    pub fn new(method: String, params: json::Value) -> Self {
+        Notification {
+            jsonrpc: "2.0".to_string(),
+            method: method,
+            params: params,
+        }
+    }
 }

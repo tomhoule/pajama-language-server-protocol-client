@@ -1,7 +1,7 @@
 use futures::{Async, AsyncSink, Future, Poll, Sink};
 use futures::stream::{Peekable, SplitSink, Stream};
 use tokio_service::Service;
-use messages::{RequestMessage, ResponseMessage};
+use messages::{Message, ResponseMessage};
 use error::Error;
 use uuid::Uuid;
 use std::cell::RefCell;
@@ -16,7 +16,7 @@ type ServerInput = Rc<RefCell<SplitSink<Framed<AsyncChildIo, RpcCodec>>>>;
 
 pub struct RequestHandle {
     id: Uuid,
-    request: Option<RequestMessage>,
+    request: Option<Message>,
     responses: Responses,
     server_input: ServerInput,
 }
@@ -88,7 +88,7 @@ impl RpcClient {
 }
 
 impl Service for RpcClient {
-    type Request = RequestMessage;
+    type Request = Message;
     type Response = ResponseMessage;
     type Error = Error;
     type Future = RequestHandle;
@@ -109,7 +109,7 @@ mod test {
 
     use super::RpcClient;
     use uuid::Uuid;
-    use messages::{RequestMessage, ResponseMessage};
+    use messages::{Message, ResponseMessage};
     use tokio_service::Service;
     use futures::future::*;
     use futures::stream::Stream;
@@ -141,9 +141,9 @@ mod test {
         let (_, receiver) = mio::channel::channel();
         let responses = EventedReceiver::new(PollEvented::new(receiver, &core.handle()).unwrap());
         let client = RpcClient::new(sink, responses);
-        let request = RequestMessage {
+        let request = Message {
             jsonrpc: "2.0".to_string(),
-            id: Uuid::new_v4(),
+            id: Some(Uuid::new_v4()),
             method: "test_method".to_string(),
             params: json::to_value(""),
         };
@@ -173,7 +173,7 @@ mod test {
             .split();
         let client = RpcClient::new(sink, responses);
 
-        let request = RequestMessage::new("test_method".to_string(), json::to_value(""));
+        let request = Message::new_request("test_method".to_string(), json::to_value(""));
         let response = ResponseMessage {
             jsonrpc: "2.0".to_string(),
             id: request.id,
@@ -183,7 +183,7 @@ mod test {
         let expected_response = response.clone();
         let future = client.call(request);
 
-        let request_2 = RequestMessage::new("rickroll".to_string(), json::to_value(""));
+        let request_2 = Message::new_request("rickroll".to_string(), json::to_value(""));
         let response_2 = ResponseMessage {
             jsonrpc: "2.0".to_string(),
             id: request_2.id,

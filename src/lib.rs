@@ -83,6 +83,16 @@ macro_rules! requests {
     )*}
 }
 
+macro_rules! client_notifications {
+    ( $( $name:ident: $method:expr, $params:ty, $error:ty, $docstring:expr;)+ )=> {$(
+        #[doc=$docstring]
+        pub fn $name(&self, params: $params) -> impl 'static + Future<Item=Result<(), $error>>
+        {
+            self.call_with_params($method, params)
+        }
+    )*}
+}
+
 impl LanguageServer {
     pub fn new<L: Language>(lang: L, handle: Handle) -> CustomResult<Self> {
         let args = lang.get_command();
@@ -134,8 +144,8 @@ impl LanguageServer {
               REQ: Serialize
     {
 
-        let h = self.client.call(RequestMessage::new(method.to_string(), json::to_value(params)));
-        h.then(|res| handle_response(res?))
+        self.client.call(RequestMessage::new(method.to_string(), json::to_value(params)))
+            .then(|res| handle_response(res?))
     }
 
     requests!(
@@ -159,4 +169,11 @@ impl LanguageServer {
     );
 
     // TODO: DocumentLink
+
+    fn notify_with_params<'a, REQ>(&self, method: &'static str, params: REQ) -> impl 'a + Future<Item=(), Error=Error>
+        where REQ: Serialize
+    {
+
+        self.client.call(Message::new_notification(method.to_string(), json::to_value(params)))
+    }
 }

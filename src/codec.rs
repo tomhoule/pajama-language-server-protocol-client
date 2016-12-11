@@ -2,7 +2,7 @@ use std::io;
 use tokio_core::io::{Codec, EasyBuf};
 use serde_json as json;
 use message_parser::parse_message;
-use messages::{IncomingMessage, RequestMessage};
+use messages::{IncomingMessage, Message};
 use std::io::Write;
 use dispatcher::handle_raw_message;
 use std::str;
@@ -11,7 +11,7 @@ pub struct RpcCodec;
 
 impl Codec for RpcCodec {
     type In = IncomingMessage;
-    type Out = RequestMessage;
+    type Out = Message;
 
     fn decode(&mut self, buf: &mut EasyBuf) -> Result<Option<Self::In>, io::Error> {
         let json = {
