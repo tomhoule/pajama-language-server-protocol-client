@@ -178,6 +178,12 @@ impl LanguageServer {
 
     client_notifications!(
         cancel_request: NOTIFICATION__Cancel, CancelParams, "";
+        did_change_configuration: NOTIFICATION__WorkspaceChangeConfiguration, DidChangeConfigurationParams, "";
         did_change_text_document: NOTIFICATION__DidChangeTextDocument, DidChangeTextDocumentParams, "";
+        did_change_watched_files: NOTIFICATION__DidChangeWatchedFiles, DidChangeWatchedFilesParams, "";
+        did_close_text_document: NOTIFICATION__DidCloseTextDocument, DidCloseTextDocumentParams, "";
+        did_open_text_document: NOTIFICATION__DidOpenTextDocument, DidOpenTextDocumentParams, "";
+        did_save_text_document: NOTIFICATION__DidSaveTextDocument, DidSaveTextDocumentParams, "";
+        exit: NOTIFICATION__Exit, (), "";
     );
 }
