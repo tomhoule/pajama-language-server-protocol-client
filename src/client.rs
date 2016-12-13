@@ -1,7 +1,7 @@
 use futures::{Async, AsyncSink, Future, Poll, Sink};
 use futures::stream::{Peekable, SplitSink, Stream};
 use tokio_service::Service;
-use messages::{Message, ResponseMessage};
+use messages::{OutgoingMessage, RequestMessage, Notification, ResponseMessage};
 use error::Error;
 use uuid::Uuid;
 use std::cell::RefCell;
@@ -14,9 +14,39 @@ use evented_receiver::EventedReceiver;
 type Responses = Rc<RefCell<Peekable<EventedReceiver<ResponseMessage>>>>;
 type ServerInput = Rc<RefCell<SplitSink<Framed<AsyncChildIo, RpcCodec>>>>;
 
+pub struct NotificationHandle {
+    notification: Option<Notification>,
+    server_input: ServerInput,
+}
+
+impl Future for NotificationHandle {
+    type Item = ();
+    type Error = Error;
+
+    fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
+        debug!("writing a notification");
+        let mut server_input = self.server_input.borrow_mut();
+        if let Some(notification) = self.notification.take() {
+            match server_input.start_send(OutgoingMessage::Notification(notification))? {
+                AsyncSink::Ready => (),
+                AsyncSink::NotReady(OutgoingMessage::Notification(rejected)) => {
+                    self.notification = Some(rejected);
+                    return Ok(Async::NotReady)
+                },
+                AsyncSink::NotReady(_) => unreachable!(),
+            }
+        }
+
+        match server_input.poll_complete()? {
+            ready @ Async::Ready(()) => Ok(ready),
+            nr @ Async::NotReady => Ok(nr),
+        }
+    }
+}
+
 pub struct RequestHandle {
     id: Uuid,
-    request: Option<Message>,
+    request: Option<RequestMessage>,
     responses: Responses,
     server_input: ServerInput,
 }
@@ -29,12 +59,13 @@ impl Future for RequestHandle {
         debug!("polling for a response, {:?}", self.id);
         let mut server_input = self.server_input.borrow_mut();
         if let Some(request) = self.request.take() {
-            match server_input.start_send(request)? {
+            match server_input.start_send(OutgoingMessage::Request(request))? {
                 AsyncSink::Ready => (),
-                AsyncSink::NotReady(req) => {
+                AsyncSink::NotReady(OutgoingMessage::Request(req)) => {
                     self.request = Some(req);
                     return Ok(Async::NotReady);
-                }
+                },
+                AsyncSink::NotReady(_) => unreachable!()
             }
         }
 
@@ -85,10 +116,17 @@ impl RpcClient {
             responses: Rc::new(RefCell::new(responses.peekable())),
         }
     }
+
+    pub fn notify(&self, notification: Notification) -> NotificationHandle {
+        NotificationHandle {
+            notification: Some(notification),
+            server_input: self.server_input.clone(),
+        }
+    }
 }
 
 impl Service for RpcClient {
-    type Request = Message;
+    type Request = RequestMessage;
     type Response = ResponseMessage;
     type Error = Error;
     type Future = RequestHandle;
@@ -109,7 +147,7 @@ mod test {
 
     use super::RpcClient;
     use uuid::Uuid;
-    use messages::{Message, ResponseMessage};
+    use messages::{RequestMessage, ResponseMessage};
     use tokio_service::Service;
     use futures::future::*;
     use futures::stream::Stream;
@@ -141,9 +179,9 @@ mod test {
         let (_, receiver) = mio::channel::channel();
         let responses = EventedReceiver::new(PollEvented::new(receiver, &core.handle()).unwrap());
         let client = RpcClient::new(sink, responses);
-        let request = Message {
+        let request = RequestMessage {
             jsonrpc: "2.0".to_string(),
-            id: Some(Uuid::new_v4()),
+            id: Uuid::new_v4(),
             method: "test_method".to_string(),
             params: json::to_value(""),
         };
@@ -173,7 +211,7 @@ mod test {
             .split();
         let client = RpcClient::new(sink, responses);
 
-        let request = Message::new_request("test_method".to_string(), json::to_value(""));
+        let request = RequestMessage::new("test_method".to_string(), json::to_value(""));
         let response = ResponseMessage {
             jsonrpc: "2.0".to_string(),
             id: request.id,
@@ -183,7 +221,7 @@ mod test {
         let expected_response = response.clone();
         let future = client.call(request);
 
-        let request_2 = Message::new_request("rickroll".to_string(), json::to_value(""));
+        let request_2 = RequestMessage::new("rickroll".to_string(), json::to_value(""));
         let response_2 = ResponseMessage {
             jsonrpc: "2.0".to_string(),
             id: request_2.id,

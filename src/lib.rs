@@ -84,11 +84,11 @@ macro_rules! requests {
 }
 
 macro_rules! client_notifications {
-    ( $( $name:ident: $method:expr, $params:ty, $error:ty, $docstring:expr;)+ )=> {$(
+    ( $( $name:ident: $method:expr, $params:ty, $docstring:expr;)+ )=> {$(
         #[doc=$docstring]
-        pub fn $name(&self, params: $params) -> impl 'static + Future<Item=Result<(), $error>>
+        pub fn $name(&self, params: $params) -> impl 'static + Future<Item=()>
         {
-            self.call_with_params($method, params)
+            self.notify_with_params($method, params)
         }
     )*}
 }
@@ -173,7 +173,11 @@ impl LanguageServer {
     fn notify_with_params<'a, REQ>(&self, method: &'static str, params: REQ) -> impl 'a + Future<Item=(), Error=Error>
         where REQ: Serialize
     {
-
-        self.client.call(Message::new_notification(method.to_string(), json::to_value(params)))
+        self.client.notify(Notification::new(method.to_string(), json::to_value(params)))
     }
+
+    client_notifications!(
+        cancel_request: NOTIFICATION__Cancel, CancelParams, "";
+        did_change_text_document: NOTIFICATION__DidChangeTextDocument, DidChangeTextDocumentParams, "";
+    );
 }

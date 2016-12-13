@@ -2,7 +2,7 @@ use std::io;
 use tokio_core::io::{Codec, EasyBuf};
 use serde_json as json;
 use message_parser::parse_message;
-use messages::{IncomingMessage, Message};
+use messages::{IncomingMessage, OutgoingMessage};
 use std::io::Write;
 use dispatcher::handle_raw_message;
 use std::str;
@@ -11,7 +11,7 @@ pub struct RpcCodec;
 
 impl Codec for RpcCodec {
     type In = IncomingMessage;
-    type Out = Message;
+    type Out = OutgoingMessage;
 
     fn decode(&mut self, buf: &mut EasyBuf) -> Result<Option<Self::In>, io::Error> {
         let json = {
@@ -38,8 +38,11 @@ impl Codec for RpcCodec {
     }
 
     fn encode(&mut self, msg: Self::Out, buf: &mut Vec<u8>) -> Result<(), io::Error> {
-        let payload =
-            json::to_string(&msg).map_err(|err| io::Error::new(io::ErrorKind::Other, err))?;
+        let payload = match msg {
+            OutgoingMessage::Request(ref req) => json::to_string(req),
+            OutgoingMessage::Notification(ref notification) => json::to_string(notification),
+            OutgoingMessage::MultipleMessages(_) => unimplemented!()
+        }.map_err(|err| io::Error::new(io::ErrorKind::Other, err))?;
         buf.write(format!("Content-Length: {}\r\n\r\n", payload.len()).as_bytes())?;
         debug!("encode - writing: {}", payload);
         buf.write(payload.as_bytes())?;

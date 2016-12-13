@@ -34,6 +34,7 @@ mod tests {
     use super::handle_raw_message;
     use messages::IncomingMessage;
     use serde_json::builder;
+    use serde_json as json;
 
     #[test]
     fn handle_raw_message_works_with_arrays_of_messages() {
@@ -57,8 +58,9 @@ mod tests {
             if let IncomingMessage::Notification(ref notification) = messages[1] {
                 assert_eq!(notification,
                            &messages::Notification {
+                               jsonrpc: "2.0".to_string(),
                                method: "combobulate".to_string(),
-                               params: "baz".to_string(),
+                               params: json::to_value("baz".to_string()),
                            });
             } else {
                 panic!("Was not a Notification")

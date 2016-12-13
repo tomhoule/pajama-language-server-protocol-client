@@ -21,6 +21,13 @@ pub enum IncomingMessage {
     MultipleMessages(Vec<IncomingMessage>),
 }
 
+#[derive(Debug)]
+pub enum OutgoingMessage {
+    Request(RequestMessage),
+    Notification(Notification),
+    MultipleMessages(Vec<OutgoingMessage>),
+}
+
 impl FromIterator<IncomingMessage> for IncomingMessage {
     fn from_iter<T>(iter: T) -> Self
         where T: IntoIterator<Item = IncomingMessage>
@@ -37,27 +44,18 @@ pub struct RpcError {
 }
 
 #[derive(Debug, Deserialize, Serialize)]
-pub struct Message {
+pub struct RequestMessage {
     pub jsonrpc: String,
-    pub id: Option<Uuid>,
+    pub id: Uuid,
     pub method: String,
     pub params: json::Value,
 }
 
-impl Message {
-    pub fn new_request(method: String, params: json::Value) -> Self {
-        Message {
+impl RequestMessage {
+    pub fn new(method: String, params: json::Value) -> Self {
+        RequestMessage {
             jsonrpc: "2.0".to_string(),
-            id: Some(Uuid::new_v4()),
-            method: method,
-            params: params,
-        }
-    }
-
-    pub fn new_notification(method: String, params: json::Value) -> Self {
-        Message {
-            jsonrpc: "2.0".to_string(),
-            id: None,
+            id: Uuid::new_v4(),
             method: method,
             params: params,
         }
