@@ -53,7 +53,7 @@ use error::{Error, Result as CustomResult};
 use tokio_core::reactor::{Handle, PollEvented};
 use language_server_io::AsyncChildIo;
 use client::RpcClient;
-use messages::{ServerNotification, Notification, RequestMessage, IncomingMessage};
+use messages::{ServerNotification, Notification, RequestMessage, IncomingMessage, ResponseError};
 use tokio_service::Service;
 use futures::stream::Stream;
 use serde_json as json;
@@ -75,7 +75,7 @@ pub struct LanguageServer {
 macro_rules! requests {
     ( $( $name:ident: $method:expr, $params:ty, $result:ty, $error:ty, $docstring:expr;)+ )=> {$(
         #[doc=$docstring]
-        pub fn $name(&mut self, params: $params) -> impl 'static + Future<Item=Result<$result, $error>>
+        pub fn $name(&mut self, params: $params) -> impl 'static + Future<Item=Result<$result, ResponseError<$error>>>
         {
             self.call_with_params($method, params)
         }
@@ -149,22 +149,22 @@ impl LanguageServer {
 
     requests!(
         initialize: REQUEST__Initialize, InitializeParams, InitializeResult, InitializeError, "Initializes the server";
-        shutdown: REQUEST__Shutdown, (), json::Value, json::Value, "";
-        completion: REQUEST__Completion, TextDocumentPositionParams, CompletionResult, json::Value, "";
-        resolve_completion: REQUEST__ResolveCompletionItem, CompletionItem, CompletionItem, json::Value, "";
-        hover: REQUEST__Hover, TextDocumentPositionParams, Hover, json::Value, "";
-        signature_help: REQUEST__SignatureHelp, TextDocumentPositionParams, SignatureHelp, json::Value, "";
-        goto_definition: REQUEST__GotoDefinition, TextDocumentPositionParams, LocationOrLocationList, json::Value, "";
-        find_references: REQUEST__References, ReferenceParams, Vec<Location>, json::Value, "";
-        document_highlights: REQUEST__DocumentHighlight, TextDocumentPositionParams, Vec<DocumentHighlight>, json::Value, "";
-        document_symbols: REQUEST__DocumentSymbols, DocumentSymbolParams, Vec<SymbolInformation>, json::Value, "";
-        workspace_symbols: REQUEST__WorkspaceSymbols, WorkspaceSymbolParams, Vec<SymbolInformation>, json::Value, "";
-        code_action: REQUEST__CodeAction, CodeActionParams, Vec<languageserver_types::Command>, json::Value, "";
-        code_lens: REQUEST__CodeLens, CodeLensParams, Vec<CodeLens>, json::Value, "";
-        resolve_code_lens: REQUEST__CodeLensResolve, CodeLens, CodeLens, json::Value, "";
-        range_formatting: REQUEST__RangeFormatting, DocumentRangeFormattingParams, Vec<TextEdit>, json::Value, "";
-        on_type_formatting: REQUEST__OnTypeFormatting, DocumentRangeFormattingParams, Vec<TextEdit>, json::Value, "";
-        rename: REQUEST__Rename, RenameParams, WorkspaceEdit, json::Value, "";
+        shutdown: REQUEST__Shutdown, (), json::Value, (), "";
+        completion: REQUEST__Completion, TextDocumentPositionParams, CompletionResult, (), "";
+        resolve_completion: REQUEST__ResolveCompletionItem, CompletionItem, CompletionItem, (), "";
+        hover: REQUEST__Hover, TextDocumentPositionParams, Hover, (), "";
+        signature_help: REQUEST__SignatureHelp, TextDocumentPositionParams, SignatureHelp, (), "";
+        goto_definition: REQUEST__GotoDefinition, TextDocumentPositionParams, LocationOrLocationList, (), "";
+        find_references: REQUEST__References, ReferenceParams, Vec<Location>, (), "";
+        document_highlights: REQUEST__DocumentHighlight, TextDocumentPositionParams, Vec<DocumentHighlight>, (), "";
+        document_symbols: REQUEST__DocumentSymbols, DocumentSymbolParams, Vec<SymbolInformation>, (), "";
+        workspace_symbols: REQUEST__WorkspaceSymbols, WorkspaceSymbolParams, Vec<SymbolInformation>, (), "";
+        code_action: REQUEST__CodeAction, CodeActionParams, Vec<languageserver_types::Command>, (), "";
+        code_lens: REQUEST__CodeLens, CodeLensParams, Vec<CodeLens>, (), "";
+        resolve_code_lens: REQUEST__CodeLensResolve, CodeLens, CodeLens, (), "";
+        range_formatting: REQUEST__RangeFormatting, DocumentRangeFormattingParams, Vec<TextEdit>, (), "";
+        on_type_formatting: REQUEST__OnTypeFormatting, DocumentRangeFormattingParams, Vec<TextEdit>, (), "";
+        rename: REQUEST__Rename, RenameParams, WorkspaceEdit, (), "";
     );
 
     // TODO: DocumentLink

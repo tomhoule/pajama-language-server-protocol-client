@@ -90,3 +90,10 @@ impl Notification {
 pub enum ServerNotification {
     Other(Notification)
 }
+
+#[derive(Clone, Debug, Deserialize, PartialEq)]
+pub struct ResponseError<T> {
+    code: i32,
+    message: String,
+    data: T,
+}
