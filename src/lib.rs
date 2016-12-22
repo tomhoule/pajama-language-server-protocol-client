@@ -53,7 +53,7 @@ use error::{Error, Result as CustomResult};
 use tokio_core::reactor::{Handle, PollEvented};
 use language_server_io::AsyncChildIo;
 use client::RpcClient;
-use messages::{Notification, RequestMessage, IncomingMessage};
+use messages::{ServerNotification, Notification, RequestMessage, IncomingMessage};
 use tokio_service::Service;
 use futures::stream::Stream;
 use serde_json as json;
@@ -69,7 +69,7 @@ impl<R, E> RpcFuture<R, E> for Future<Item=Result<R, E>, Error=Error> {}
 
 pub struct LanguageServer {
     client: RpcClient,
-    pub notifications: Box<Stream<Item = Notification, Error = Error>>,
+    pub notifications: Box<Stream<Item = ServerNotification, Error = Error>>,
 }
 
 macro_rules! requests {

@@ -13,7 +13,7 @@ fn handle_object(json_object: Map<String, Value>) -> Result<IncomingMessage, Err
         Ok(IncomingMessage::Response(deserialized_response))
     } else {
         debug!("is a notification");
-        Ok(IncomingMessage::Notification(from_value::<messages::Notification>(Value::Object(json_object))?))
+        Ok(IncomingMessage::Notification(messages::ServerNotification::Other(from_value::<messages::Notification>(Value::Object(json_object))?)))
     }
 }
 
@@ -56,12 +56,12 @@ mod tests {
 
         if let IncomingMessage::MultipleMessages(messages) = result {
             if let IncomingMessage::Notification(ref notification) = messages[1] {
-                assert_eq!(notification,
-                           &messages::Notification {
+                assert_eq!(*notification,
+                           messages::ServerNotification::Other(messages::Notification {
                                jsonrpc: "2.0".to_string(),
                                method: "combobulate".to_string(),
                                params: json::to_value("baz".to_string()),
-                           });
+                           }));
             } else {
                 panic!("Was not a Notification")
             }

@@ -17,7 +17,7 @@ use std::iter::{FromIterator, IntoIterator};
 #[derive(Debug)]
 pub enum IncomingMessage {
     Response(ResponseMessage),
-    Notification(Notification),
+    Notification(ServerNotification),
     MultipleMessages(Vec<IncomingMessage>),
 }
 
@@ -84,4 +84,9 @@ impl Notification {
             params: params,
         }
     }
+}
+
+#[derive(Debug, PartialEq)]
+pub enum ServerNotification {
+    Other(Notification)
 }
