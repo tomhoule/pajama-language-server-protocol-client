@@ -75,7 +75,7 @@ pub struct LanguageServer {
 macro_rules! requests {
     ( $( $name:ident: $method:expr, $params:ty, $result:ty, $error:ty, $docstring:expr;)+ )=> {$(
         #[doc=$docstring]
-        pub fn $name(&self, params: $params) -> impl 'static + Future<Item=Result<$result, $error>>
+        pub fn $name(&mut self, params: $params) -> impl 'static + Future<Item=Result<$result, $error>>
         {
             self.call_with_params($method, params)
         }
@@ -137,7 +137,7 @@ impl LanguageServer {
         Ok(ls)
     }
 
-    fn call_with_params<'a, REQ, RES, ERR>(&self, method: &'static str, params: REQ) -> impl 'a + Future<Item=Result<RES, ERR>, Error=Error>
+    fn call_with_params<'a, REQ, RES, ERR>(&mut self, method: &'static str, params: REQ) -> impl 'a + Future<Item=Result<RES, ERR>, Error=Error>
         where RES: Deserialize + 'static,
               ERR: Deserialize + 'static,
               REQ: Serialize

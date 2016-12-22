@@ -131,7 +131,7 @@ impl Service for RpcClient {
     type Error = Error;
     type Future = RequestHandle;
 
-    fn call(&self, request: Self::Request) -> Self::Future {
+    fn call(&mut self, request: Self::Request) -> Self::Future {
         RequestHandle {
             id: request.id,
             request: Some(request),
@@ -178,7 +178,7 @@ mod test {
             .split();
         let (_, receiver) = mio::channel::channel();
         let responses = EventedReceiver::new(PollEvented::new(receiver, &core.handle()).unwrap());
-        let client = RpcClient::new(sink, responses);
+        let mut client = RpcClient::new(sink, responses);
         let request = RequestMessage {
             jsonrpc: "2.0".to_string(),
             id: Uuid::new_v4(),
@@ -209,7 +209,7 @@ mod test {
             .unwrap()
             .framed(RpcCodec)
             .split();
-        let client = RpcClient::new(sink, responses);
+        let mut client = RpcClient::new(sink, responses);
 
         let request = RequestMessage::new("test_method".to_string(), json::to_value(""));
         let response = ResponseMessage {

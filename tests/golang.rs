@@ -36,7 +36,7 @@ fn golang_language_server_can_initialize() {
 
     let mut core = Core::new().unwrap();
 
-    let server = LanguageServer::new(Golang, core.handle()).unwrap();
+    let mut server = LanguageServer::new(Golang, core.handle()).unwrap();
 
     let params = InitializeParams {
         process_id: None,
