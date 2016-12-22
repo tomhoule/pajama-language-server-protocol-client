@@ -25,7 +25,6 @@ pub enum IncomingMessage {
 pub enum OutgoingMessage {
     Request(RequestMessage),
     Notification(Notification),
-    MultipleMessages(Vec<OutgoingMessage>),
 }
 
 impl FromIterator<IncomingMessage> for IncomingMessage {

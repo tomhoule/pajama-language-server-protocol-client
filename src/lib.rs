@@ -64,7 +64,6 @@ use types::*;
 use utils::handle_response;
 use serde::{Serialize, Deserialize};
 
-type Response<R, E> = Box<Future<Item = Result<R, E>, Error = Error>>;
 pub trait RpcFuture<R, E>: Future<Item=Result<R, E>, Error=Error> {}
 impl<R, E> RpcFuture<R, E> for Future<Item=Result<R, E>, Error=Error> {}
 
@@ -111,7 +110,7 @@ impl LanguageServer {
         let notifications = EventedReceiver::new(PollEvented::new(notifications_receiver,
                                                                   &handle)?);
 
-        let worker = stream.map_err(|err| Error::from(err))
+        let worker = stream.map_err(Error::from)
             .for_each(move |incoming_message| {
                 match incoming_message {
                     IncomingMessage::Response(message) => {

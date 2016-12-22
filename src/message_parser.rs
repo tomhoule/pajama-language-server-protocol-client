@@ -56,9 +56,9 @@ fn message<'a, I: U8Input<Buffer = &'a [u8], Token = u8>>
         .bind(|i, buffer| i.ret(json::from_slice(buffer)))
 }
 
-pub fn parse_message
-    (msg: &[u8])
-     -> Result<Result<json::Value, json::Error>, (&[u8], chomp::parsers::Error<u8>)> {
+pub type JsonParseResult = Result<json::Value, json::Error>;
+
+pub fn parse_message(msg: &[u8]) -> Result<JsonParseResult, (&[u8], chomp::parsers::Error<u8>)> {
     parse_only(message, msg)
 }
 

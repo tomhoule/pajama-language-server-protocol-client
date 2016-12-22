@@ -41,7 +41,6 @@ impl Codec for RpcCodec {
         let payload = match msg {
             OutgoingMessage::Request(ref req) => json::to_string(req),
             OutgoingMessage::Notification(ref notification) => json::to_string(notification),
-            OutgoingMessage::MultipleMessages(_) => unimplemented!()
         }.map_err(|err| io::Error::new(io::ErrorKind::Other, err))?;
         buf.write(format!("Content-Length: {}\r\n\r\n", payload.len()).as_bytes())?;
         debug!("encode - writing: {}", payload);
